@@ -4,9 +4,9 @@ This Java project implements a client-server communication system using UDP prot
 
 ## Project Structure
 
-- `common.Message.java` - common.Message class with serialization support
+- `common.ProtocoloMessage.java` - common.ProtocoloMessage class with serialization support
 - `common.ClientInfo.java` - Client information container
-- `common.MessageUtils.java` - Utility methods for message serialization
+- `common.MessageUtils.java` - Utility methods for protocoloMessage serialization
 - `UDPServer.java` - Server application with GUI
 - `UDPClient.java` - Client application with GUI
 
@@ -39,14 +39,14 @@ java UDPClient
 ### Client Features:
 - Connect/disconnect to/from server
 - Send messages to specific clients or broadcast to all
-- Real-time message reception
+- Real-time protocoloMessage reception
 - User-friendly GUI with connection management
 
-## common.Message Protocol:
+## common.ProtocoloMessage Protocol:
 1. **CLIENT_CONNECT** - Client joins the system
 2. **CLIENT_LIST_UPDATE** - Server sends updated client list
-3. **SEND_MESSAGE** - Client sends message
-4. **MESSAGE_RECEIVED** - Server forwards message
+3. **SEND_MESSAGE** - Client sends protocoloMessage
+4. **MESSAGE_RECEIVED** - Server forwards protocoloMessage
 5. **CLIENT_DISCONNECT** - Client leaves the system
 
 ## Usage Instructions:
@@ -59,4 +59,4 @@ java UDPClient
 6. Type and send messages
 7. Use "Disconnect" to leave the system
 
-The system supports multiple concurrent clients and real-time message exchange.
+The system supports multiple concurrent clients and real-time protocoloMessage exchange.
