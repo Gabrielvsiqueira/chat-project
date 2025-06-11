@@ -6,44 +6,29 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.net.*;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import common.ProtocolMessage;
 import common.ClientInfo;
 import common.MessageUtils;
 
-/**
- * Servidor UDP que gerencia conexões de clientes, autenticação e operações de fórum
- * de acordo com um protocolo JSON definido.
- * Utiliza GSON para serialização/desserialização de mensagens.
- */
 public class UDPServer extends JFrame {
     private DatagramSocket socket;
     private boolean running;
     private int port;
-    // Mapeia chaves de endpoint (IP:Porta) para ClientInfo, rastreando todos os clientes que enviaram uma mensagem.
     private Map<String, ClientInfo> connectedClients;
-    // Mapeia tokens de autenticação para ClientInfo, rastreando usuários logados.
     private Map<String, ClientInfo> authenticatedUsers;
-    // Simulação de banco de dados de usuários em memória (username -> User object).
     private Map<String, User> userDatabase;
-    // Simulação de banco de dados de tópicos de fórum em memória (topicId -> Topic object).
     private Map<String, Topic> topicDatabase;
     private AtomicInteger nextTopicId; // Gerador de IDs sequenciais para tópicos
     private AtomicInteger nextTokenId; // Gerador de IDs sequenciais para tokens
 
-    // Componentes da GUI
     private DefaultListModel<ClientInfo> listModel;
     private JList<ClientInfo> clientList;
     private JTextArea logArea;
 
-    /**
-     * Construtor do servidor UDP. Inicializa estruturas de dados, GUI e solicita a porta.
-     */
     public UDPServer() {
         connectedClients = new ConcurrentHashMap<>();
         authenticatedUsers = new ConcurrentHashMap<>();
@@ -52,19 +37,19 @@ public class UDPServer extends JFrame {
         nextTopicId = new AtomicInteger(1);
         nextTokenId = new AtomicInteger(1);
 
-        // Adiciona alguns usuários de teste para facilitar o desenvolvimento
+        // Usuarios de teste
         userDatabase.put("admin", new User("admin", "adminpass", "Administrator", "admin"));
         userDatabase.put("user1", new User("user1", "user1pass", "User One", "common"));
         userDatabase.put("user2", new User("user2", "user2pass", "User Two", "common"));
+
+        topicDatabase.put("1", new Topic("1", "Bem-vindos ao Fórum", "Introdução", "Olá a todos! Este é o primeiro tópico do nosso fórum.", "admin"));
+        topicDatabase.put("2", new Topic("2", "Dicas de Programação Java", "Desenvolvimento", "Compartilhe suas melhores dicas e truques de Java aqui!", "user1"));
 
         initializeGUI();
         askForPort();
         startServer();
     }
 
-    /**
-     * Inicializa os componentes da interface gráfica do servidor.
-     */
     private void initializeGUI() {
         setTitle("UDP Server (Forum)");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -73,7 +58,6 @@ public class UDPServer extends JFrame {
 
         JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Painel da lista de clientes conectados e autenticados
         listModel = new DefaultListModel<>();
         clientList = new JList<>(listModel);
         clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -81,7 +65,6 @@ public class UDPServer extends JFrame {
         clientScrollPane.setBorder(BorderFactory.createTitledBorder("Connected & Authenticated Clients"));
         clientScrollPane.setPreferredSize(new Dimension(250, 0));
 
-        // Área de log do servidor
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -93,7 +76,6 @@ public class UDPServer extends JFrame {
 
         add(mainPanel);
 
-        // Listener para o evento de fechamento da janela
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -105,10 +87,6 @@ public class UDPServer extends JFrame {
         setVisible(true);
     }
 
-    /**
-     * Solicita ao usuário a porta em que o servidor deve escutar.
-     * Usa a porta 12345 como padrão se a entrada for inválida.
-     */
     private void askForPort() {
         String portStr = JOptionPane.showInputDialog(this, "Enter server port:", "Server Port", JOptionPane.QUESTION_MESSAGE);
         try {
@@ -122,9 +100,6 @@ public class UDPServer extends JFrame {
         }
     }
 
-    /**
-     * Inicia o servidor UDP, criando o DatagramSocket e o thread de escuta.
-     */
     private void startServer() {
         try {
             socket = new DatagramSocket(port); // Cria o socket UDP na porta especificada
@@ -142,10 +117,6 @@ public class UDPServer extends JFrame {
         }
     }
 
-    /**
-     * Loop principal do servidor para receber pacotes UDP.
-     * Desserializa os pacotes para ProtocolMessage e os encaminha para o manipulador.
-     */
     private void serverLoop() {
         byte[] buffer = new byte[8192]; // Buffer para receber dados do pacote
 
@@ -171,28 +142,20 @@ public class UDPServer extends JFrame {
         }
     }
 
-    /**
-     * Manipula as mensagens recebidas de acordo com o código de operação do protocolo.
-     *
-     * @param message       A mensagem do protocolo recebida.
-     * @param clientAddress O endereço IP do cliente remetente.
-     * @param clientPort    A porta do cliente remetente.
-     */
-    private void handleMessage(ProtocolMessage message, InetAddress clientAddress, int clientPort) {
+    private void handleMessage(ProtocolMessage message, InetAddress clientAddress, int clientPort) throws IOException {
         String opCode = message.getOperationCode();
         String clientEndpointKey = clientAddress.getHostAddress() + ":" + clientPort;
 
-        logMessage("Received message from " + clientEndpointKey + " with op: " + opCode);
+        logMessage("Received message from " + clientEndpointKey + " with op: " + opCode + " and payload: " + new String(MessageUtils.serializeMessage(message)));
 
-        // Obtém ou cria um ClientInfo para este endpoint.
-        // Isso garante que cada endpoint de rede tenha um ClientInfo associado.
         ClientInfo currentClient = connectedClients.computeIfAbsent(clientEndpointKey, k ->
                 new ClientInfo("Guest", clientAddress, clientPort));
-
-        // Direciona a mensagem para o manipulador específico com base no código de operação
         switch (opCode) {
             case "000": // Login
                 handleLogin(message, currentClient);
+                break;
+            case "005": // Retornar Dados de Usuário (opcode 005)
+                handleRetrieveUserData(message, currentClient);
                 break;
             case "010": // Cadastrar
                 handleRegister(message, currentClient);
@@ -209,6 +172,9 @@ public class UDPServer extends JFrame {
             case "050": // Enviar Mensagem (Criar Tópico)
                 handleCreateTopic(message, currentClient);
                 break;
+            // Opcodes 060 e 070 (listar tópicos e usuários) não estão mais explicitamente
+            // implementados aqui, conforme a mudança de foco para 005/006/007.
+            // Se precisar deles futuramente, será necessário reintroduzir a lógica.
             default:
                 // Responde com um erro se o código de operação for desconhecido
                 sendErrorMessage("999", "Unknown operation code: " + opCode, clientAddress, clientPort);
@@ -216,34 +182,30 @@ public class UDPServer extends JFrame {
         }
     }
 
-    // --- Métodos de Manipulação do Protocolo ---
-
-    /**
-     * Manipula a operação de Login (000).
-     * Valida credenciais, gera token e autentica o cliente.
-     *
-     * @param request    A mensagem de requisição de login.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
     private void handleLogin(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String pass = request.getPassword();
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting login for user: '" + user + "' from " + address.getHostAddress() + ":" + port);
+
         // Validação de entrada
         if (user == null || user.isEmpty() || pass == null || pass.isEmpty()) {
             sendErrorMessage("002", "User or password cannot be null/empty.", address, port);
+            logMessage("Login failed for " + address.getHostAddress() + ":" + port + ": User or password null/empty.");
             return;
         }
         if (!userDatabase.containsKey(user)) {
             sendErrorMessage("002", "User '" + user + "' does not exist.", address, port);
+            logMessage("Login failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": User not found.");
             return;
         }
 
         User storedUser = userDatabase.get(user);
         if (!storedUser.getPassword().equals(pass)) {
             sendErrorMessage("002", "Incorrect password for user '" + user + "'.", address, port);
+            logMessage("Login failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Incorrect password.");
             return;
         }
 
@@ -263,23 +225,56 @@ public class UDPServer extends JFrame {
                 // Se o cliente já estava na lista (ex: reconexão), atualiza a exibição
                 listModel.setElementAt(clientInfo, listModel.indexOf(clientInfo));
             }
-            logMessage("Client '" + user + "' logged in with token: " + token + " from " + address.getHostAddress() + ":" + port);
+            logMessage("Client '" + user + "' logged in with token: " + token + " from " + address.getHostAddress() + ":" + port + ". Nickname: " + storedUser.getNickname());
         });
 
         // Envia resposta de sucesso ao cliente
         ProtocolMessage response = new ProtocolMessage("001");
         response.setToken(token);
         response.setUser(user); // Inclui o usuário na resposta de sucesso
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
     }
 
-    /**
-     * Manipula a operação de Cadastro (010).
-     * Registra um novo usuário no sistema.
-     *
-     * @param request    A mensagem de requisição de cadastro.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
+    private void handleRetrieveUserData(ProtocolMessage request, ClientInfo clientInfo) {
+        String requestedUser = request.getUser(); // O usuário cujos dados são solicitados
+        String token = request.getToken(); // O token do cliente que faz a requisição
+        InetAddress address = clientInfo.getAddress();
+        int port = clientInfo.getPort();
+
+        logMessage("Attempting to retrieve data for user: '" + requestedUser + "' by client token '" + token + "' from " + address.getHostAddress() + ":" + port);
+
+        // Validação: Token e usuário solicitado não podem ser nulos/vazios
+        if (token == null || token.isEmpty() || requestedUser == null || requestedUser.isEmpty()) {
+            sendErrorMessage("007", "User or token cannot be null/empty for data retrieval.", address, port);
+            logMessage("User data retrieval failed for " + address.getHostAddress() + ":" + port + ": User or token null/empty in request.");
+            return;
+        }
+
+        // Validação: Verifica se o token é válido e o cliente está autenticado
+        ClientInfo authenticatingClient = authenticatedUsers.get(token);
+        if (authenticatingClient == null || !authenticatingClient.getUserId().equals(clientInfo.getUserId())) {
+            // Se o token não for válido ou não corresponder ao cliente que enviou a requisição
+            sendErrorMessage("007", "Invalid token or token does not match requesting client for data retrieval.", address, port);
+            logMessage("User data retrieval failed for " + requestedUser + " from " + address.getHostAddress() + ":" + port + ": Invalid or mismatched token for requesting client.");
+            return;
+        }
+
+        // Recupera os dados do usuário do banco de dados
+        User storedUser = userDatabase.get(requestedUser);
+        if (storedUser == null) {
+            sendErrorMessage("007", "User '" + requestedUser + "' not found.", address, port);
+            logMessage("User data retrieval failed for '" + requestedUser + "' from " + address.getHostAddress() + ":" + port + ": Requested user not found in database.");
+            return;
+        }
+
+        // Envia resposta de sucesso (006) com o username e nickname do usuário encontrado
+        ProtocolMessage response = new ProtocolMessage("006");
+        response.setUser(storedUser.getUsername()); // Retorna o username do usuário encontrado
+        response.setNickname(storedUser.getNickname()); // Retorna o nickname do usuário encontrado
+        sendMessage(response, address, port);
+        logMessage("Sent 006 response with data for user '" + requestedUser + "' (Nickname: " + storedUser.getNickname() + ") to " + address.getHostAddress() + ":" + port);
+    }
+
     private void handleRegister(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String nick = request.getNickname();
@@ -287,62 +282,67 @@ public class UDPServer extends JFrame {
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting registration for user: '" + user + "', nickname: '" + nick + "' from " + address.getHostAddress() + ":" + port);
+
         // Validação de entrada
         if (user == null || user.isEmpty() || nick == null || nick.isEmpty() || pass == null || pass.isEmpty()) {
             sendErrorMessage("012", "User, nickname, or password cannot be null/empty.", address, port);
+            logMessage("Registration failed for " + address.getHostAddress() + ":" + port + ": User, nickname or password null/empty.");
             return;
         }
         if (userDatabase.containsKey(user)) {
             sendErrorMessage("012", "User '" + user + "' already exists.", address, port);
+            logMessage("Registration failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": User already exists.");
             return;
         }
 
         // Validação de formato (conforme o protocolo)
         if (user.length() < 6 || user.length() > 16 || !user.matches("[a-zA-Z0-9]+")) {
             sendErrorMessage("012", "Username must be 6-16 alphanumeric characters.", address, port);
+            logMessage("Registration failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid username format.");
             return;
         }
         if (pass.length() < 6 || pass.length() > 32 || !pass.matches("[a-zA-Z0-9]+")) {
             sendErrorMessage("012", "Password must be 6-32 alphanumeric characters.", address, port);
+            logMessage("Registration failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid password format.");
             return;
         }
         if (nick.length() < 6 || nick.length() > 16 || !nick.matches("[a-zA-Z0-9]+")) {
             sendErrorMessage("012", "Nickname must be 6-16 alphanumeric characters.", address, port);
+            logMessage("Registration failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid nickname format.");
             return;
         }
 
         User newUser = new User(user, pass, nick, "common"); // Novo usuário com papel "common"
         userDatabase.put(user, newUser); // Adiciona ao "banco de dados" de usuários
 
-        logMessage("New user registered: " + user + " (" + nick + ")");
+        logMessage("New user registered: '" + user + "' (" + nick + ") from " + address.getHostAddress() + ":" + port);
 
         // Envia resposta de sucesso
         ProtocolMessage response = new ProtocolMessage("011");
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
     }
 
-    /**
-     * Manipula a operação de Logout (020).
-     * Remove o token de autenticação e desautentica o cliente.
-     *
-     * @param request    A mensagem de requisição de logout.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
     private void handleLogout(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String token = request.getToken();
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting logout for user: '" + user + "' with token: '" + token + "' from " + address.getHostAddress() + ":" + port);
+
+
         // Validação de entrada
         if (user == null || user.isEmpty() || token == null || token.isEmpty()) {
             sendErrorMessage("022", "User or token cannot be null/empty.", address, port);
+            logMessage("Logout failed for " + address.getHostAddress() + ":" + port + ": User or token null/empty.");
             return;
         }
 
         // Verifica se o token é válido e pertence ao usuário
         if (!authenticatedUsers.containsKey(token) || !authenticatedUsers.get(token).getUserId().equals(user)) {
             sendErrorMessage("022", "Invalid token or token does not match user.", address, port);
+            logMessage("Logout failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid or mismatched token.");
             return;
         }
 
@@ -354,21 +354,14 @@ public class UDPServer extends JFrame {
         // Remove da lista da GUI (executado na EDT)
         SwingUtilities.invokeLater(() -> {
             listModel.removeElement(clientInfo);
-            logMessage("Client '" + user + "' logged out. Token: " + token);
+            logMessage("Client '" + user + "' logged out. Token: " + token + " from " + address.getHostAddress() + ":" + port);
         });
 
         // Envia resposta de sucesso
         ProtocolMessage response = new ProtocolMessage("021");
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
     }
 
-    /**
-     * Manipula a operação de Alterar Cadastro (Próprio) (030).
-     * Permite que um usuário autenticado altere seu apelido ou senha.
-     *
-     * @param request    A mensagem de requisição de alteração de perfil.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
     private void handleChangeProfile(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String pass = request.getPassword(); // Senha atual para verificação
@@ -377,63 +370,70 @@ public class UDPServer extends JFrame {
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting profile change for user: '" + user + "' from " + address.getHostAddress() + ":" + port + ". New Nick: " + newNick + ", New Pass Provided: " + (newPass != null && !newPass.isEmpty()));
+
         // Validação de entrada
         if (user == null || user.isEmpty() || pass == null || pass.isEmpty()) {
             sendErrorMessage("032", "User or current password cannot be null/empty.", address, port);
+            logMessage("Profile change failed for " + address.getHostAddress() + ":" + port + ": User or current password null/empty.");
             return;
         }
         if (!userDatabase.containsKey(user)) {
             sendErrorMessage("032", "User '" + user + "' does not exist.", address, port);
+            logMessage("Profile change failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": User not found.");
             return;
         }
 
         User storedUser = userDatabase.get(user);
         if (!storedUser.getPassword().equals(pass)) {
             sendErrorMessage("032", "Incorrect current password for user '" + user + "'.", address, port);
+            logMessage("Profile change failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Incorrect current password.");
             return;
         }
 
         boolean changed = false;
+        String oldNick = storedUser.getNickname();
         // Atualiza apelido se fornecido e válido
         if (newNick != null && !newNick.isEmpty()) {
             if (newNick.length() < 6 || newNick.length() > 16 || !newNick.matches("[a-zA-Z0-9]+")) {
                 sendErrorMessage("032", "New nickname must be 6-16 alphanumeric characters.", address, port);
+                logMessage("Profile change failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid new nickname format.");
                 return;
             }
-            storedUser.setNickname(newNick);
-            clientInfo.setName(newNick); // Atualiza o nome de exibição no ClientInfo
-            changed = true;
+            if (!oldNick.equals(newNick)) {
+                storedUser.setNickname(newNick);
+                clientInfo.setName(newNick); // Atualiza o nome de exibição no ClientInfo
+                changed = true;
+                logMessage("User '" + user + "' changed nickname from '" + oldNick + "' to '" + newNick + "'.");
+            }
         }
         // Atualiza senha se fornecida e válida
         if (newPass != null && !newPass.isEmpty()) {
             if (newPass.length() < 6 || newPass.length() > 32 || !newPass.matches("[a-zA-Z0-9]+")) {
                 sendErrorMessage("032", "New password must be 6-32 alphanumeric characters.", address, port);
+                logMessage("Profile change failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid new password format.");
                 return;
             }
-            storedUser.setPassword(newPass);
-            changed = true;
+            if (!storedUser.getPassword().equals(newPass)) { // Check if new password is different
+                storedUser.setPassword(newPass);
+                changed = true;
+                logMessage("User '" + user + "' changed password.");
+            }
         }
 
         if (changed) {
-            logMessage("User '" + user + "' profile updated.");
+            logMessage("User '" + user + "' profile updated successfully.");
             // Força a atualização visual da lista de clientes para refletir a mudança de apelido
             SwingUtilities.invokeLater(() -> clientList.repaint());
         } else {
-            logMessage("User '" + user + "' sent profile update request but no changes were made.");
+            logMessage("User '" + user + "' sent profile update request but no changes were made to nickname or password.");
         }
 
         // Envia resposta de sucesso
         ProtocolMessage response = new ProtocolMessage("031");
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
     }
 
-    /**
-     * Manipula a operação de Apagar Cadastro (Próprio) (040).
-     * Exclui a conta de um usuário.
-     *
-     * @param request    A mensagem de requisição de exclusão de conta.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
     private void handleDeleteAccount(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String token = request.getToken();
@@ -441,21 +441,26 @@ public class UDPServer extends JFrame {
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting account deletion for user: '" + user + "' with token: '" + token + "' from " + address.getHostAddress() + ":" + port);
+
         // Validação de entrada
         if (user == null || user.isEmpty() || token == null || token.isEmpty() || pass == null || pass.isEmpty()) {
             sendErrorMessage("042", "User, token, or password cannot be null/empty.", address, port);
+            logMessage("Account deletion failed for " + address.getHostAddress() + ":" + port + ": User or token null/empty.");
             return;
         }
 
         // Verifica se o token é válido e pertence ao usuário
         if (!authenticatedUsers.containsKey(token) || !authenticatedUsers.get(token).getUserId().equals(user)) {
             sendErrorMessage("042", "Invalid token or token does not match user.", address, port);
+            logMessage("Account deletion failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Invalid or mismatched token.");
             return;
         }
 
         User storedUser = userDatabase.get(user);
         if (storedUser == null || !storedUser.getPassword().equals(pass)) {
             sendErrorMessage("042", "Incorrect password or user does not exist.", address, port);
+            logMessage("Account deletion failed for user '" + user + "' from " + address.getHostAddress() + ":" + port + ": Incorrect password or user not found.");
             return;
         }
 
@@ -468,21 +473,14 @@ public class UDPServer extends JFrame {
         // Remove da lista da GUI (executado na EDT)
         SwingUtilities.invokeLater(() -> {
             listModel.removeElement(clientInfo);
-            logMessage("User account '" + user + "' deleted.");
+            logMessage("User account '" + user + "' deleted from " + address.getHostAddress() + ":" + port);
         });
 
         // Envia resposta de sucesso
         ProtocolMessage response = new ProtocolMessage("041");
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
     }
 
-    /**
-     * Manipula a operação de Enviar Mensagem (Criar Tópico) (050).
-     * Cria um novo tópico no fórum e o transmite para todos os clientes autenticados.
-     *
-     * @param request    A mensagem de requisição de criação de tópico.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     */
     private void handleCreateTopic(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String title = request.getTitle();
@@ -491,10 +489,13 @@ public class UDPServer extends JFrame {
         InetAddress address = clientInfo.getAddress();
         int port = clientInfo.getPort();
 
+        logMessage("Attempting to create topic by client: '" + clientInfo.getName() + "' (ID: " + clientInfo.getUserId() + ") from " + address.getHostAddress() + ":" + port + ". Title: '" + title + "'");
+
         // Validação de entrada
         if (token == null || token.isEmpty() || title == null || title.isEmpty() ||
                 subject == null || subject.isEmpty() || msgContent == null || msgContent.isEmpty()) {
             sendErrorMessage("052", "Token, title, subject, or message cannot be null/empty.", address, port);
+            logMessage("Topic creation failed for " + address.getHostAddress() + ":" + port + ": Missing token, title, subject, or message content.");
             return;
         }
 
@@ -502,95 +503,67 @@ public class UDPServer extends JFrame {
         ClientInfo authClient = authenticatedUsers.get(token);
         if (authClient == null || !authClient.getUserId().equals(clientInfo.getUserId())) {
             sendErrorMessage("052", "Invalid or expired token.", address, port);
+            logMessage("Topic creation failed for " + address.getHostAddress() + ":" + port + ": Invalid or expired token for user '" + clientInfo.getUserId() + "'.");
             return;
         }
-
-        // Validação de formato (comprimento) para título, assunto, mensagem
-        // O protocolo indica "???" para comprimento, então adicione validações conforme necessário.
-        // Exemplo:
-        // if (title.length() > 255 || subject.length() > 255 || msgContent.length() > 1024) {
-        //     sendErrorMessage("052", "Title, subject, or message content exceeds max length.", address, port);
-        //     return;
-        // }
 
         String topicId = String.valueOf(nextTopicId.getAndIncrement()); // Gera ID sequencial para o tópico
         Topic newTopic = new Topic(topicId, title, subject, msgContent, authClient.getUserId());
         topicDatabase.put(topicId, newTopic); // Armazena o tópico
 
-        logMessage("New topic created by " + authClient.getUserId() + ": '" + title + "' (ID: " + topicId + ")");
+        logMessage("New topic created by " + authClient.getUserId() + ": '" + title + "' (ID: " + topicId + ") from " + address.getHostAddress() + ":" + port);
 
         // Envia resposta de sucesso para o cliente que criou o tópico
         ProtocolMessage response = new ProtocolMessage("051");
-        sendMessage(response, address, port);
+        sendMessage(response, address, port); // Este método agora imprimirá o objeto completo
 
-        // --- NOVO: Transmite o novo tópico para todos os clientes autenticados ---
         ProtocolMessage broadcastTopicMsg = new ProtocolMessage("055"); // Novo código de operação para broadcast de tópico
-        broadcastTopicMsg.setTopicId(newTopic.getId());
+        broadcastTopicMsg.setTopicId(newTopic.getId()); // Exemplo: Se ProtocolMessage tem setTopicId
         broadcastTopicMsg.setTopicTitle(newTopic.getTitle());
         broadcastTopicMsg.setTopicSubject(newTopic.getSubject());
         broadcastTopicMsg.setTopicContent(newTopic.getContent());
         broadcastTopicMsg.setTopicAuthor(newTopic.getAuthorUserId());
 
+        logMessage("Broadcasting new topic '" + newTopic.getTitle() + "' (ID: " + newTopic.getId() + ") to all authenticated clients.");
         for (ClientInfo client : authenticatedUsers.values()) {
-            // Não envia a mensagem de broadcast de volta para o próprio remetente,
-            // pois ele já recebeu a confirmação 051 e pode exibir seu próprio tópico.
-            // No entanto, para um fórum, pode-se querer que o remetente também veja
-            // a mensagem broadcastada para ter uma experiência consistente.
-            // Por enquanto, vamos enviar para todos, incluindo o remetente.
-            sendMessage(broadcastTopicMsg, client.getAddress(), client.getPort());
+            sendMessage(broadcastTopicMsg, client.getAddress(), client.getPort()); // Comentar se ProtocolMessage não tem os campos para broadcast
+            logMessage("  - Broadcasted (attempted) to " + client.getAddress().getHostAddress() + ":" + client.getPort() + " (User: " + client.getUserId() + ")");
         }
-        logMessage("Broadcasted new topic '" + newTopic.getTitle() + "' (ID: " + newTopic.getId() + ") to all authenticated clients.");
     }
 
-    // --- Métodos Auxiliares ---
-
-    /**
-     * Envia uma mensagem do protocolo para um endereço IP e porta específicos.
-     *
-     * @param message O objeto ProtocolMessage a ser enviado.
-     * @param address O endereço IP de destino.
-     * @param port    A porta de destino.
-     */
     private void sendMessage(ProtocolMessage message, InetAddress address, int port) {
         try {
-            byte[] data = MessageUtils.serializeMessage(message); // Serializa a mensagem para bytes JSON
+            // Serializa a mensagem para bytes JSON
+            byte[] data = MessageUtils.serializeMessage(message);
+
+            // --- AQUI É ONDE O OBJETO ProtocolMessage É IMPRESSO NO CONSOLE DO SERVIDOR ---
+            // Converte os bytes serializados para uma String antes de imprimir
+            System.out.println("SERVER DEBUG - Sending " + message.getOperationCode() + " to " + address.getHostAddress() + ":" + port + ": " + new String(data));
+            // -----------------------------------------------------------------------------
+
             DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
             socket.send(packet); // Envia o pacote
+            logMessage("Sent message op '" + message.getOperationCode() + "' to " + address.getHostAddress() + ":" + port + " (Size: " + data.length + " bytes).");
         } catch (IOException e) {
-            logMessage("Error sending message to " + address.getHostAddress() + ":" + port + ": " + e.getMessage());
+            logMessage("Error sending message op '" + message.getOperationCode() + "' to " + address.getHostAddress() + ":" + port + ": " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma mensagem de erro padronizada do protocolo para um cliente.
-     *
-     * @param opCode   O código de operação do erro.
-     * @param errorMsg A mensagem de erro.
-     * @param address  O endereço IP do cliente.
-     * @param port     A porta do cliente.
-     */
     private void sendErrorMessage(String opCode, String errorMsg, InetAddress address, int port) {
         ProtocolMessage message = ProtocolMessage.createErrorMessage(opCode, errorMsg);
-        sendMessage(message, address, port);
+        sendMessage(message, address, port); // Este método agora imprimirá o objeto completo
         logMessage("Sent error " + opCode + ": '" + errorMsg + "' to " + address.getHostAddress() + ":" + port);
     }
 
-    /**
-     * Adiciona uma mensagem à área de log da GUI do servidor.
-     * Garante que a atualização da GUI seja feita na Event Dispatch Thread (EDT).
-     *
-     * @param message A mensagem a ser logada.
-     */
     private void logMessage(String message) {
+        String logEntry = "[" + new java.util.Date() + "] " + message;
+        System.out.println(logEntry);
         SwingUtilities.invokeLater(() -> {
-            logArea.append("[" + new java.util.Date() + "] " + message + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength()); // Rola para o final
+            logArea.append(logEntry + "\n");
+            logArea.setCaretPosition(logArea.getDocument().getLength());
         });
     }
 
-    /**
-     * Para o servidor, fechando o DatagramSocket e interrompendo o loop de escuta.
-     */
     private void stopServer() {
         running = false;
         if (socket != null && !socket.isClosed()) {
@@ -599,22 +572,10 @@ public class UDPServer extends JFrame {
         logMessage("Server stopped");
     }
 
-    /**
-     * Método principal para iniciar o servidor.
-     * Garante que a inicialização da GUI seja feita na Event Dispatch Thread (EDT).
-     *
-     * @param args Argumentos da linha de comando (não utilizados).
-     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new UDPServer());
     }
 
-    // --- Classes de Dados Internas para o Servidor (Simulação de DB) ---
-
-    /**
-     * Classe interna que representa um usuário registrado no sistema.
-     * Usada para simular um banco de dados de usuários em memória.
-     */
     private static class User {
         private String username;
         private String password;
@@ -637,10 +598,6 @@ public class UDPServer extends JFrame {
         public void setNickname(String nickname) { this.nickname = nickname; }
     }
 
-    /**
-     * Classe interna que representa um tópico de fórum.
-     * Usada para simular um banco de dados de tópicos em memória.
-     */
     private static class Topic {
         private String id;
         private String title;
