@@ -1,9 +1,7 @@
 package client;
 
 import common.ProtocolMessage;
-import common.ClientInfo; // Ainda pode ser útil para exibir informações de outros clientes, se necessário
 import common.MessageUtils;
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -11,24 +9,18 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.net.*;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Cliente UDP que interage com o servidor de fórum, enviando e recebendo
- * mensagens de protocolo JSON.
- * A GUI permite operações de login, registro, logout, atualização de perfil
- * e criação de tópicos.
- */
 public class UDPClient extends JFrame {
     private DatagramSocket socket;
     private InetAddress serverAddress;
     private int serverPort;
     private String currentUsername; // O nome de usuário atualmente logado
     private String currentToken; // O token de autenticação recebido do servidor
-    private AtomicBoolean connected = new AtomicBoolean(false); // Estado de conexão com o servidor
+    private AtomicBoolean connected = new AtomicBoolean(false); // Estado de autenticação com o servidor (logado)
     private AtomicBoolean running = new AtomicBoolean(false); // Estado do thread de escuta
 
-    // Componentes da GUI
     private JTextField serverHostField;
     private JTextField serverPortField;
     private JTextField usernameField;
@@ -47,68 +39,64 @@ public class UDPClient extends JFrame {
     private JTextArea topicMessageArea;
     private JButton createTopicButton;
 
+    private JTextField userIdToRetrieveField;
+    private JButton retrieveUserDataButton; // Para opcode 005
+    private JButton listTopicsButton; // Declarado aqui
     private JTextArea receivedMessagesArea; // Área para exibir mensagens recebidas e logs do cliente
 
-    /**
-     * Construtor do cliente UDP. Inicializa a interface gráfica.
-     */
     public UDPClient() {
         initializeGUI();
     }
 
-    /**
-     * Inicializa os componentes da interface gráfica do cliente.
-     */
     private void initializeGUI() {
         setTitle("UDP Client (Forum)");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        setSize(700, 600); // Tamanho aumentado para melhor visualização
+        setSize(700, 750); // Tamanho aumentado para acomodar mais painéis
         setLocationRelativeTo(null);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Painel de Conexão e Autenticação
-        JPanel authPanel = createAuthPanel();
-        mainPanel.add(authPanel, BorderLayout.NORTH);
+        JPanel topPanel = new JPanel(new BorderLayout()); // Usar BorderLayout para topPanel
+        topPanel.add(createAuthPanel(), BorderLayout.NORTH); // Painel de autenticação em cima
+        topPanel.add(createDataRetrievalPanel(), BorderLayout.CENTER); // Painel de retorno de dados no centro
+        mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // Painel de Criação de Tópicos
-        JPanel topicPanel = createTopicPanel();
-        mainPanel.add(topicPanel, BorderLayout.CENTER);
+        mainPanel.add(createTopicPanel(), BorderLayout.CENTER); // Painel de tópico agora no centro
 
-        // Painel de Mensagens Recebidas / Log do Servidor
+        // Painel Inferior (Mensagens Recebidas / Log do Cliente) -- Funcionalidade ainda não está funcionando para uso.
         JPanel receivedPanel = new JPanel(new BorderLayout());
-        receivedPanel.setBorder(BorderFactory.createTitledBorder("Forum Messages / Server Log"));
+        receivedPanel.setBorder(BorderFactory.createTitledBorder("Forum Messages /  Client Log"));
 
         receivedMessagesArea = new JTextArea(10, 0);
         receivedMessagesArea.setEditable(false);
         receivedMessagesArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane scrollPane = new JScrollPane(receivedMessagesArea);
-        receivedPanel.add(scrollPane, BorderLayout.CENTER); // Centraliza a área de log
+        receivedPanel.add(scrollPane, BorderLayout.CENTER);
 
-        mainPanel.add(receivedPanel, BorderLayout.SOUTH); // Coloca a área de log na parte inferior
+        mainPanel.add(receivedPanel, BorderLayout.SOUTH);
 
         add(mainPanel);
 
-        // Listener para o evento de fechamento da janela
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                if (connected.get()) {
-                    sendLogoutRequest(); // Tenta enviar logout antes de fechar
+                if (connected.get()) { // Se estiver logado, tenta enviar logout
+                    sendLogoutRequest();
                 }
+                // Garante que o socket do cliente seja fechado
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                    appendReceivedMessage("Client socket closed.");
+                }
+                running.set(false); // Garante que o thread de escuta pare
                 System.exit(0);
             }
         });
 
-        updateGUIState(); // Define o estado inicial da GUI
+        updateGUIState();
         setVisible(true);
     }
 
-    /**
-     * Cria o painel de conexão e autenticação com campos de entrada e botões.
-     *
-     * @return O JPanel configurado.
-     */
     private JPanel createAuthPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Server Connection & Authentication"));
@@ -130,7 +118,7 @@ public class UDPClient extends JFrame {
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
         usernameField = new JTextField(15); panel.add(usernameField, gbc);
 
-        gbc.gridx = 2; gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE; panel.add(new JLabel("Password:"), gbc);
+        gbc.gridx = 2; gbc.gridy = 1; gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE; panel.add(new JLabel("Password:"), gbc);
         gbc.gridx = 3;
         passwordField = new JPasswordField(15); panel.add(passwordField, gbc);
 
@@ -144,7 +132,7 @@ public class UDPClient extends JFrame {
         gbc.gridx = 3;
         newPasswordField = new JPasswordField(15); panel.add(newPasswordField, gbc);
 
-        // Botões de Ação
+        // Botões de Ação dos eventos
         gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 1; gbc.fill = GridBagConstraints.HORIZONTAL;
         loginButton = new JButton("Login (000)");
         loginButton.addActionListener(e -> sendLoginRequest());
@@ -165,7 +153,7 @@ public class UDPClient extends JFrame {
         updateProfileButton.addActionListener(e -> sendUpdateProfileRequest());
         panel.add(updateProfileButton, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 4; // Botão de exclusão ocupa 4 colunas
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 4;
         deleteAccountButton = new JButton("Delete Account (040)");
         deleteAccountButton.addActionListener(e -> sendDeleteAccountRequest());
         panel.add(deleteAccountButton, gbc);
@@ -173,11 +161,33 @@ public class UDPClient extends JFrame {
         return panel;
     }
 
-    /**
-     * Cria o painel para criação de tópicos de fórum.
-     *
-     * @return O JPanel configurado.
-     */
+    private JPanel createDataRetrievalPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Retrieve Server Data (Op: 005)"));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1; gbc.weightx = 0;
+        panel.add(new JLabel("User ID to Retrieve:"), gbc);
+        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1.0;
+        userIdToRetrieveField = new JTextField(10);
+        panel.add(userIdToRetrieveField, gbc);
+
+        gbc.gridx = 2; gbc.gridy = 0; gbc.weightx = 0; gbc.gridwidth = 1;
+        retrieveUserDataButton = new JButton("Get User Data (005)");
+        retrieveUserDataButton.addActionListener(e -> sendRetrieveUserDataRequest());
+        panel.add(retrieveUserDataButton, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 3;
+        listTopicsButton = new JButton("List Topics (060)"); // Instanciação aqui
+        listTopicsButton.addActionListener(e -> sendListTopicsRequest());
+        panel.add(listTopicsButton, gbc);
+
+        return panel;
+    }
+
     private JPanel createTopicPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Create Forum Topic (050)"));
@@ -188,17 +198,14 @@ public class UDPClient extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
 
-        // Campo de Título do Tópico
         gbc.gridx = 0; gbc.gridy = 0; inputPanel.add(new JLabel("Title:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0;
         topicTitleField = new JTextField(20); inputPanel.add(topicTitleField, gbc);
 
-        // Campo de Assunto do Tópico
         gbc.gridx = 0; gbc.gridy = 1; inputPanel.add(new JLabel("Subject:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0;
         topicSubjectField = new JTextField(20); inputPanel.add(topicSubjectField, gbc);
 
-        // Área de Mensagem do Tópico
         gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 2;
         inputPanel.add(new JLabel("Message Content:"), gbc);
 
@@ -211,7 +218,6 @@ public class UDPClient extends JFrame {
 
         panel.add(inputPanel, BorderLayout.CENTER);
 
-        // Botão de Criar Tópico
         createTopicButton = new JButton("Create Topic");
         createTopicButton.addActionListener(e -> sendCreateTopicRequest());
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -221,113 +227,103 @@ public class UDPClient extends JFrame {
         return panel;
     }
 
-    // --- Gerenciamento de Estado da GUI ---
-
-    /**
-     * Atualiza o estado dos componentes da GUI (habilitado/desabilitado)
-     * com base no estado de conexão e autenticação do cliente.
-     */
     private void updateGUIState() {
-        boolean isConnected = connected.get();
+        boolean isLoggedIn = connected.get();
 
-        // Campos de Conexão
-        serverHostField.setEnabled(!isConnected);
-        serverPortField.setEnabled(!isConnected);
+        serverHostField.setEnabled(!isLoggedIn);
+        serverPortField.setEnabled(!isLoggedIn);
 
-        // Campos de Autenticação
-        usernameField.setEnabled(!isConnected);
-        passwordField.setEnabled(!isConnected);
-        nicknameField.setEnabled(!isConnected); // Apelido só para registro
-        newPasswordField.setEnabled(isConnected); // Nova senha só para update
+        usernameField.setEnabled(!isLoggedIn);
+        passwordField.setEnabled(!isLoggedIn);
 
-        // Botões de Autenticação
-        loginButton.setEnabled(!isConnected);
-        registerButton.setEnabled(!isConnected);
-        logoutButton.setEnabled(isConnected);
-        updateProfileButton.setEnabled(isConnected);
-        deleteAccountButton.setEnabled(isConnected);
+        nicknameField.setEnabled(true);
+        newPasswordField.setEnabled(true);
 
-        // Campos e Botão de Criação de Tópico
-        topicTitleField.setEnabled(isConnected);
-        topicSubjectField.setEnabled(isConnected);
-        topicMessageArea.setEnabled(isConnected);
-        createTopicButton.setEnabled(isConnected);
+        loginButton.setEnabled(!isLoggedIn);
+        registerButton.setEnabled(!isLoggedIn);
+        logoutButton.setEnabled(isLoggedIn);
+        updateProfileButton.setEnabled(isLoggedIn);
+        deleteAccountButton.setEnabled(isLoggedIn);
+
+        topicTitleField.setEnabled(isLoggedIn);
+        topicSubjectField.setEnabled(isLoggedIn);
+        topicMessageArea.setEnabled(isLoggedIn);
+        createTopicButton.setEnabled(isLoggedIn);
+
+        userIdToRetrieveField.setEnabled(isLoggedIn);
+        retrieveUserDataButton.setEnabled(isLoggedIn);
+        listTopicsButton.setEnabled(isLoggedIn);
     }
 
-    // --- Operações de Rede ---
-
-    /**
-     * Tenta estabelecer uma conexão com o servidor UDP.
-     * Cria um DatagramSocket se ainda não estiver aberto e inicia o thread de escuta.
-     *
-     * @throws UnknownHostException Se o host do servidor não puder ser resolvido.
-     * @throws SocketException      Se ocorrer um erro ao abrir o socket.
-     */
-    private void connectToServer() throws UnknownHostException, SocketException {
+    private void setupClientSocket() throws UnknownHostException, SocketException {
         String host = serverHostField.getText().trim();
         String portStr = serverPortField.getText().trim();
 
         if (host.isEmpty() || portStr.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please fill in server host and port.", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
+            throw new IllegalArgumentException("Please fill in server host and port.");
         }
 
         serverPort = Integer.parseInt(portStr);
-        serverAddress = InetAddress.getByName(host); // Resolve o endereço IP do servidor
+        serverAddress = InetAddress.getByName(host);
 
-        // Cria o socket UDP do cliente (ele se ligará a uma porta efêmera disponível)
-        socket = new DatagramSocket();
+        if (socket == null || socket.isClosed()) {
+            socket = new DatagramSocket();
+            appendReceivedMessage("Client socket opened on local port: " + socket.getLocalPort());
+        }
 
-        // Inicia o thread de escuta se ainda não estiver rodando
         if (!running.get()) {
             running.set(true);
             Thread listenerThread = new Thread(this::listenForMessages);
-            listenerThread.setDaemon(true); // Define como daemon para que o thread termine com a aplicação
+            listenerThread.setDaemon(true);
             listenerThread.start();
+            appendReceivedMessage("Listener thread started.");
         }
-        appendReceivedMessage("Attempting to connect to server at " + host + ":" + serverPort);
+        appendReceivedMessage("Server target set to " + host + ":" + serverPort);
     }
 
-    /**
-     * Envia uma mensagem do protocolo para o servidor.
-     * Garante que o socket esteja inicializado antes de enviar.
-     *
-     * @param message O objeto ProtocolMessage a ser enviado.
-     */
     private void sendMessageToServer(ProtocolMessage message) {
         try {
-            // Garante que o socket esteja inicializado e não fechado
             if (socket == null || socket.isClosed()) {
-                connectToServer(); // Tenta reconectar/inicializar o socket
+                throw new IllegalStateException("Client socket is not initialized or is closed. Please try to connect first.");
             }
+            byte[] dataToSend = MessageUtils.serializeMessage(message);
+            appendReceivedMessage("Sending " + message.getOperationCode() + " request: " + new String(dataToSend));
+            System.out.println("CLIENT DEBUG - Sending " + message.getOperationCode() + " to " + serverAddress.getHostAddress() + ":" + serverPort + ": " + new String(dataToSend));
 
-            byte[] data = MessageUtils.serializeMessage(message); // Serializa a mensagem para bytes JSON
-            DatagramPacket packet = new DatagramPacket(data, data.length, serverAddress, serverPort);
-            socket.send(packet); // Envia o pacote
+            DatagramPacket packet = new DatagramPacket(dataToSend, dataToSend.length, serverAddress, serverPort);
+            socket.send(packet);
         } catch (IOException e) {
             appendReceivedMessage("Error sending message: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "Failed to send message: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage(e.getMessage());
         } catch (Exception e) {
             appendReceivedMessage("Unexpected error before sending: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "Unexpected error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    /**
-     * Loop principal do cliente para escutar mensagens do servidor.
-     * Desserializa as mensagens e as encaminha para o manipulador.
-     */
     private void listenForMessages() {
-        byte[] buffer = new byte[8192]; // Buffer para receber dados do pacote
+        byte[] buffer = new byte[8192];
 
         while (running.get()) {
             try {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet); // Bloqueia até que um pacote seja recebido
+                socket.receive(packet);
 
                 ProtocolMessage message = MessageUtils.deserializeMessage(packet); // Desserializa a mensagem
-                handleReceivedMessage(message); // Manipula a mensagem recebida
+                byte[] receivedData = MessageUtils.serializeMessage(message); // Serializa novamente para obter o JSON string
+                appendReceivedMessage("Received " + message.getOperationCode() + " response: " + new String(receivedData));
+                System.out.println("CLIENT DEBUG - Received " + message.getOperationCode() + " from " + packet.getAddress().getHostAddress() + ":" + packet.getPort() + ": " + new String(receivedData));
+                handleReceivedMessage(message);
 
+            } catch (SocketException e) {
+                if (running.get()) { // Só loga se o socket não foi fechado intencionalmente
+                    SwingUtilities.invokeLater(() ->
+                            appendReceivedMessage("Socket error (likely closed): " + e.getMessage()));
+                }
+                running.set(false); // Para o loop de escuta se o socket for fechado
             } catch (IOException e) {
                 // Se o cliente ainda estiver rodando, registra o erro de IO
                 if (running.get()) {
@@ -342,72 +338,82 @@ public class UDPClient extends JFrame {
         }
     }
 
-    /**
-     * Manipula as mensagens de resposta recebidas do servidor.
-     * Atualiza a GUI com base no código de operação da resposta.
-     *
-     * @param message A mensagem do protocolo recebida do servidor.
-     */
     private void handleReceivedMessage(ProtocolMessage message) {
         SwingUtilities.invokeLater(() -> { // Garante que as atualizações da GUI sejam na EDT
             String opCode = message.getOperationCode();
-            String msgContent = message.getMessageContent();
-            String token = message.getToken();
+            String messageDetails = message.getMessageContent(); // Usado para mensagens de erro ou conteúdo geral
 
             switch (opCode) {
                 case "001": // Login Sucesso
-                    currentToken = token;
-                    // Usa o usuário da resposta se presente, senão o do campo de entrada
+                    currentToken = message.getToken();
                     currentUsername = message.getUser() != null ? message.getUser() : usernameField.getText();
                     connected.set(true);
                     updateGUIState();
-                    // Removido: appendReceivedMessage("Login successful! Welcome, " + currentUsername + ". Token: " + currentToken);
+                    appendReceivedMessage("Login successful! Welcome, " + currentUsername + ".");
                     break;
                 case "002": // Erro de Login
-                case "012": // Erro de Registro
-                case "022": // Erro de Logout
-                case "032": // Erro de Atualização de Perfil
-                case "042": // Erro de Exclusão de Conta
-                case "052": // Erro de Criação de Tópico
-                    appendReceivedMessage("SERVER ERROR (" + opCode + "): " + msgContent);
+                    appendReceivedMessage("SERVER ERROR (002 - Login Failed): " + messageDetails);
+                    break;
+                case "006": // S->C: Retornar Dados de Usuário Sucesso (resposta para 005)
+                    String retrievedUser = message.getUser();
+                    String retrievedNickname = message.getNickname();
+                    appendReceivedMessage("\n--- User Data Retrieved (006) ---");
+                    appendReceivedMessage("Username: " + retrievedUser);
+                    appendReceivedMessage("Nickname: " + retrievedNickname);
+                    appendReceivedMessage("----------------------------------\n");
+                    break;
+                case "007": // S->C: Erro de Retornar Dados de Usuário (resposta para 005)
+                    appendReceivedMessage("SERVER ERROR (007 - Get User Data Failed): " + messageDetails);
                     break;
                 case "011": // Registro Sucesso
-                    // Removido: appendReceivedMessage("Registration successful! You can now log in.");
+                    appendReceivedMessage("Registration successful! You can now log in.");
+                    break;
+                case "012": // Erro de Registro
+                    appendReceivedMessage("SERVER ERROR (012 - Registration Failed): " + messageDetails);
                     break;
                 case "021": // Logout Sucesso
                     currentToken = null;
                     currentUsername = null;
                     connected.set(false);
                     updateGUIState();
-                    // Removido: appendReceivedMessage("Logged out successfully.");
+                    appendReceivedMessage("Logged out successfully.");
+                    break;
+                case "022": // Erro de Logout
+                    appendReceivedMessage("SERVER ERROR (022 - Logout Failed): " + messageDetails);
                     break;
                 case "031": // Atualização de Perfil Sucesso
-                    // Removido: appendReceivedMessage("Profile updated successfully!");
-                    // Opcional: Atualizar o apelido localmente se ele foi alterado.
-                    // Isso pode ser feito relogando ou tendo o servidor enviando o novo apelido.
+                    appendReceivedMessage("Profile updated successfully!");
+                    break;
+                case "032": // Erro de Atualização de Perfil
+                    appendReceivedMessage("SERVER ERROR (032 - Profile Update Failed): " + messageDetails);
                     break;
                 case "041": // Exclusão de Conta Sucesso
                     currentToken = null;
                     currentUsername = null;
                     connected.set(false);
                     updateGUIState();
-                    // Removido: appendReceivedMessage("Account deleted successfully.");
+                    appendReceivedMessage("Account deleted successfully.");
+                    break;
+                case "042": // Erro de Exclusão de Conta
+                    appendReceivedMessage("SERVER ERROR (042 - Account Deletion Failed): " + messageDetails);
                     break;
                 case "051": // Criação de Tópico Sucesso (confirmação para o cliente que criou)
-                    // Removido: appendReceivedMessage("Forum topic created successfully!");
-                    // Limpa os campos após a criação bem-sucedida
+                    appendReceivedMessage("Forum topic created successfully!");
                     topicTitleField.setText("");
                     topicSubjectField.setText("");
                     topicMessageArea.setText("");
                     break;
-                case "055": // NOVO: Tópico de Fórum Transmitido (para todos os clientes)
+                case "052": // Erro de Criação de Tópico
+                    appendReceivedMessage("SERVER ERROR (052 - Topic Creation Failed): " + messageDetails);
+                    break;
+                case "055": // Tópico de Fórum Transmitido (para todos os clientes)
+                    // Este bloco depende que seu common.ProtocolMessage possua os getters para os campos de tópico.
                     String topicId = message.getTopicId();
                     String topicTitle = message.getTopicTitle();
                     String topicSubject = message.getTopicSubject();
                     String topicContent = message.getTopicContent();
                     String topicAuthor = message.getTopicAuthor();
 
-                    // Formata e exibe a mensagem do tópico no log
                     appendReceivedMessage("\n--- NOVO TÓPICO DO FÓRUM ---");
                     appendReceivedMessage("ID: " + topicId);
                     appendReceivedMessage("Título: " + topicTitle);
@@ -416,26 +422,44 @@ public class UDPClient extends JFrame {
                     appendReceivedMessage("Conteúdo:\n" + topicContent);
                     appendReceivedMessage("---------------------------\n");
                     break;
+                case "061": // Resposta de Listar Tópicos (mantido se ProtocolMessage tiver 'topics')
+                    List<Map<String, String>> topics = message.getTopics();
+                    if (topics != null && !topics.isEmpty()) {
+                        appendReceivedMessage("\n--- TÓPICOS DO FÓRUM (061) ---");
+                        for (Map<String, String> topic : topics) {
+                            appendReceivedMessage(
+                                    "ID: " + topic.get("id") +
+                                            ", Título: " + topic.get("title") +
+                                            ", Assunto: " + topic.get("subject") +
+                                            ", Autor: " + topic.get("author")
+                            );
+                        }
+                        appendReceivedMessage("-------------------------------\n");
+                    } else {
+                        appendReceivedMessage("\n--- Nenhum tópico encontrado. ---");
+                    }
+                    break;
+                case "062": // Erro ao Listar Tópicos
+                    appendReceivedMessage("SERVER ERROR (062 - List Topics Failed): " + messageDetails);
+                    break;
+                // Os casos 071 e 072 não são mais necessários para a funcionalidade de "Listar Todos os Usuários Autenticados"
+                // porque o protocolo foca no 005/006/007 para dados de *um* usuário.
                 default:
                     // Mensagens de resposta desconhecidas ou não tratadas
-                    appendReceivedMessage("Resposta desconhecida do servidor: " + opCode + " - " + msgContent);
+                    appendReceivedMessage("Unknown server response: " + opCode + " - " + messageDetails);
             }
         });
     }
 
-    // --- Métodos de Envio de Requisições do Protocolo ---
-
-    /**
-     * Envia uma requisição de Login (000) para o servidor.
-     */
     private void sendLoginRequest() {
         try {
-            connectToServer(); // Garante que o socket esteja pronto antes de enviar
+            setupClientSocket(); // Garante que o socket esteja pronto e o listener rodando
+
             String user = usernameField.getText().trim();
             String pass = new String(passwordField.getPassword()).trim();
 
             if (user.isEmpty() || pass.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Nome de usuário e senha não podem estar vazios.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Username and password cannot be empty.", "Input Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -443,24 +467,28 @@ public class UDPClient extends JFrame {
             loginMsg.setUser(user);
             loginMsg.setPassword(pass);
             sendMessageToServer(loginMsg);
-            appendReceivedMessage("Enviando requisição de login para o usuário: " + user);
+        } catch (IllegalArgumentException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Input error: " + e.getMessage());
+        } catch (UnknownHostException | SocketException e) {
+            JOptionPane.showMessageDialog(this, "Failed to connect to server: " + e.getMessage(), "Connection Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Connection setup error: " + e.getMessage());
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de login: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error sending login request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending login request: " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma requisição de Registro (010) para o servidor.
-     */
     private void sendRegisterRequest() {
         try {
-            connectToServer(); // Garante que o socket esteja pronto
+            setupClientSocket(); // Garante que o socket esteja pronto e o listener rodando
+
             String user = usernameField.getText().trim();
             String pass = new String(passwordField.getPassword()).trim();
             String nick = nicknameField.getText().trim();
 
             if (user.isEmpty() || pass.isEmpty() || nick.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Nome de usuário, senha e apelido não podem estar vazios para o registro.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Username, password, and nickname cannot be empty for registration.", "Input Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -469,18 +497,21 @@ public class UDPClient extends JFrame {
             registerMsg.setPassword(pass);
             registerMsg.setNickname(nick);
             sendMessageToServer(registerMsg);
-            appendReceivedMessage("Enviando requisição de registro para o usuário: " + user);
+        } catch (IllegalArgumentException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Input error: " + e.getMessage());
+        } catch (UnknownHostException | SocketException e) {
+            JOptionPane.showMessageDialog(this, "Failed to connect to server for registration: " + e.getMessage(), "Connection Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Connection setup error: " + e.getMessage());
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de registro: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error sending registration request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending registration request: " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma requisição de Logout (020) para o servidor.
-     */
     private void sendLogoutRequest() {
         if (!connected.get() || currentUsername == null || currentToken == null) {
-            appendReceivedMessage("Não está logado.");
+            appendReceivedMessage("Not logged in. No logout request sent.");
             return;
         }
         try {
@@ -488,20 +519,15 @@ public class UDPClient extends JFrame {
             logoutMsg.setUser(currentUsername);
             logoutMsg.setToken(currentToken);
             sendMessageToServer(logoutMsg);
-            appendReceivedMessage("Enviando requisição de logout para o usuário: " + currentUsername);
-        }
-        // Não é necessário um catch aqui, pois sendMessageToServer já trata exceções.
-        catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de logout: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+        } catch (Exception e) { // sendMessageToServer já trata IOException/IllegalStateException
+            JOptionPane.showMessageDialog(this, "Error sending logout request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending logout request: " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma requisição de Atualização de Perfil (030) para o servidor.
-     */
     private void sendUpdateProfileRequest() {
         if (!connected.get() || currentUsername == null) {
-            JOptionPane.showMessageDialog(this, "Você deve estar logado para atualizar seu perfil.", "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "You must be logged in to update your profile.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         try {
@@ -511,13 +537,19 @@ public class UDPClient extends JFrame {
             String newPass = new String(newPasswordField.getPassword()).trim(); // Nova senha (opcional)
 
             if (user.isEmpty() || pass.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Nome de usuário e senha atuais são obrigatórios para atualizar o perfil.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Current username and password are required to update profile.", "Input Error", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (newNick.isEmpty() && newPass.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Enter a new nickname or a new password to update.", "Input Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
             ProtocolMessage updateMsg = new ProtocolMessage("030");
             updateMsg.setUser(user);
             updateMsg.setPassword(pass);
+            updateMsg.setToken(currentToken); // Inclua o token para autenticação da requisição
             if (!newNick.isEmpty()) {
                 updateMsg.setNewNickname(newNick);
             }
@@ -525,28 +557,19 @@ public class UDPClient extends JFrame {
                 updateMsg.setNewPassword(newPass);
             }
 
-            if (newNick.isEmpty() && newPass.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Digite um novo apelido ou uma nova senha para atualizar.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
             sendMessageToServer(updateMsg);
-            appendReceivedMessage("Enviando requisição de atualização de perfil para o usuário: " + user);
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de atualização de perfil: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error sending profile update request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending profile update request: " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma requisição de Exclusão de Conta (040) para o servidor.
-     */
     private void sendDeleteAccountRequest() {
         if (!connected.get() || currentUsername == null || currentToken == null) {
-            JOptionPane.showMessageDialog(this, "Você deve estar logado para excluir sua conta.", "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "You must be logged in to delete your account.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        // Confirmação antes de excluir a conta
-        int confirm = JOptionPane.showConfirmDialog(this, "Tem certeza de que deseja excluir sua conta? Esta ação não pode ser desfeita.", "Confirmar Exclusão", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete your account? This action cannot be undone.", "Confirm Deletion", JOptionPane.YES_NO_OPTION);
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
@@ -556,7 +579,7 @@ public class UDPClient extends JFrame {
             String pass = new String(passwordField.getPassword()).trim();
 
             if (user.isEmpty() || pass.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Nome de usuário e senha são obrigatórios para excluir a conta.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Username and password are required to delete the account.", "Input Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -565,18 +588,16 @@ public class UDPClient extends JFrame {
             deleteMsg.setToken(currentToken);
             deleteMsg.setPassword(pass);
             sendMessageToServer(deleteMsg);
-            appendReceivedMessage("Enviando requisição de exclusão de conta para o usuário: " + user);
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de exclusão de conta: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+        }
+        catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Error sending account deletion request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending account deletion request: " + e.getMessage());
         }
     }
 
-    /**
-     * Envia uma requisição de Criação de Tópico (050) para o servidor.
-     */
     private void sendCreateTopicRequest() {
         if (!connected.get() || currentToken == null) {
-            JOptionPane.showMessageDialog(this, "Você deve estar logado para criar um tópico.", "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "You must be logged in to create a topic.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
         try {
@@ -585,7 +606,7 @@ public class UDPClient extends JFrame {
             String msgContent = topicMessageArea.getText().trim();
 
             if (title.isEmpty() || subject.isEmpty() || msgContent.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Título, assunto e conteúdo da mensagem não podem estar vazios.", "Erro de Entrada", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Title, subject, and message content cannot be empty.", "Input Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -595,20 +616,52 @@ public class UDPClient extends JFrame {
             topicMsg.setSubject(subject);
             topicMsg.setMessageContent(msgContent);
             sendMessageToServer(topicMsg);
-            appendReceivedMessage("Enviando nova requisição de tópico: '" + title + "'");
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Erro ao enviar requisição de criação de tópico: " + e.getMessage(), "Erro", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Error sending topic creation request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending topic creation request: " + e.getMessage());
         }
     }
 
-    // --- Auxiliar de GUI ---
+    private void sendListTopicsRequest() {
+        if (!connected.get() || currentToken == null) {
+            JOptionPane.showMessageDialog(this, "You must be logged in to list topics.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        try {
+            ProtocolMessage listTopicsMsg = new ProtocolMessage("060");
+            listTopicsMsg.setToken(currentToken);
+            sendMessageToServer(listTopicsMsg);
+            appendReceivedMessage("Sending list topics request (060).");
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Error sending list topics request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending list topics request: " + e.getMessage());
+        }
+    }
 
-    /**
-     * Adiciona uma mensagem à área de mensagens recebidas/log da GUI do cliente.
-     * Garante que a atualização da GUI seja feita na Event Dispatch Thread (EDT).
-     *
-     * @param message A mensagem a ser exibida.
-     */
+    private void sendRetrieveUserDataRequest() {
+        if (!connected.get() || currentToken == null) {
+            JOptionPane.showMessageDialog(this, "You must be logged in to retrieve user data.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        try {
+            String userId = userIdToRetrieveField.getText().trim();
+
+            if (userId.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please enter a User ID to retrieve data.", "Input Error", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            ProtocolMessage retrieveUserMsg = new ProtocolMessage("005");
+            retrieveUserMsg.setToken(currentToken);
+            retrieveUserMsg.setUser(userId); // O usuário que você quer obter os dados
+            sendMessageToServer(retrieveUserMsg);
+            appendReceivedMessage("Sending retrieve user data request (005) for user: " + userId);
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Error sending retrieve user data request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending retrieve user data request: " + e.getMessage());
+        }
+    }
+
     private void appendReceivedMessage(String message) {
         SwingUtilities.invokeLater(() -> {
             receivedMessagesArea.append("[" + new java.util.Date() + "] " + message + "\n");
@@ -616,12 +669,6 @@ public class UDPClient extends JFrame {
         });
     }
 
-    /**
-     * Método principal para iniciar o cliente.
-     * Garante que a inicialização da GUI seja feita na Event Dispatch Thread (EDT).
-     *
-     * @param args Argumentos da linha de comando (não utilizados).
-     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new UDPClient());
     }
