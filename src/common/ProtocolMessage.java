@@ -1,18 +1,12 @@
 package common;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Representa uma mensagem do protocolo de comunicação, serializável via GSON.
- * Contém campos que mapeiam diretamente as chaves JSON definidas no protocolo.
- * O uso de @SerializedName garante que os nomes das chaves JSON correspondam
- * aos nomes dos campos Java, mesmo que sejam diferentes.
- */
 public class ProtocolMessage {
     @SerializedName("op")
     private String operationCode; // Código da operação (ex: "000", "001", "010")
-
-    // Campos comuns que podem aparecer em várias mensagens do protocolo
     @SerializedName("user")
     private String user; // Nome de usuário
     @SerializedName("pass")
@@ -32,7 +26,6 @@ public class ProtocolMessage {
     @SerializedName("subject")
     private String subject; // Assunto do tópico (para criar tópico)
 
-    // Novos campos para mensagens de broadcast de tópico (op: "055")
     @SerializedName("topic_id")
     private String topicId;
     @SerializedName("topic_title")
@@ -43,17 +36,14 @@ public class ProtocolMessage {
     private String topicContent;
     @SerializedName("topic_author")
     private String topicAuthor;
+    @SerializedName("topics")
+    private List<Map<String, String>> topics;
+    @SerializedName("users")
+    private List<Map<String, String>> users;
 
-    /**
-     * Construtor para criar uma ProtocolMessage com um código de operação.
-     *
-     * @param operationCode O código da operação (ex: "000", "001").
-     */
     public ProtocolMessage(String operationCode) {
         this.operationCode = operationCode;
     }
-
-    // Getters e Setters para todos os campos
     public String getOperationCode() { return operationCode; }
     public void setOperationCode(String operationCode) { this.operationCode = operationCode; }
 
@@ -84,7 +74,6 @@ public class ProtocolMessage {
     public String getSubject() { return subject; }
     public void setSubject(String subject) { this.subject = subject; }
 
-    // Getters e Setters para os novos campos de tópico
     public String getTopicId() { return topicId; }
     public void setTopicId(String topicId) { this.topicId = topicId; }
 
@@ -100,13 +89,12 @@ public class ProtocolMessage {
     public String getTopicAuthor() { return topicAuthor; }
     public void setTopicAuthor(String topicAuthor) { this.topicAuthor = topicAuthor; }
 
-    /**
-     * Método auxiliar para criar uma mensagem de erro padronizada.
-     *
-     * @param opCode O código de operação do erro (ex: "002", "012").
-     * @param msg    A mensagem de erro.
-     * @return Uma nova instância de ProtocolMessage configurada como mensagem de erro.
-     */
+    public List<Map<String, String>> getTopics() { return topics; }
+    public void setTopics(List<Map<String, String>> topics) { this.topics = topics; }
+
+    public List<Map<String, String>> getUsers() { return users; }
+    public void setUsers(List<Map<String, String>> users) { this.users = users; }
+
     public static ProtocolMessage createErrorMessage(String opCode, String msg) {
         ProtocolMessage errorMsg = new ProtocolMessage(opCode);
         errorMsg.setMessageContent(msg);
