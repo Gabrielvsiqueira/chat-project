@@ -11,6 +11,18 @@ This Java project implements a client-server communication system using UDP prot
 - `UDPClient.java` - Client application with GUI
 
 ## How to Run
+- To run this application, you'll need to install the GSON library. 
+- We recommend installing the library using this link: [Download da biblioteca GSON](https://search.maven.org/artifact/com.google.code.gson/gson/2.13.1/jar?eh=)
+- After downloading, you'll need to add the library as a dependency to this project.
+
+## Install GSON in Project Dependencies
+- Go to File > Project Structure... `(or press Ctrl+Alt+Shift+S)`.
+- In the "Project Structure" window, select Modules from the left-hand menu. Then, select your project's module.
+- Go to the Dependencies tab.
+- Click the + (plus) button on the right side and select JARs or directories....
+- Navigate to your project's lib (or libs) folder, select the GSON JAR file you downloaded, and click OK.
+- Ensure that the dependency's "Scope" is set to Compile (or Runtime, depending on your needs, but Compile is most common for libraries).
+- Click Apply and then OK.
 
 ### Compile all Java files:
 ```bash
@@ -51,7 +63,7 @@ java UDPClient
 
 ## Usage Instructions:
 
-1. Start the server and specify a port (default: 12345)
+1. Start the server and specify a port or use default port (default: 12345)
 2. Run client applications
 3. In each client, enter server details and your name
 4. Click "Connect" to join the messaging system
