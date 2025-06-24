@@ -3,10 +3,10 @@ package server;
 import common.ClientInfo;
 import server.model.Topic;
 import server.model.User;
-import server.repository.ReplyRepository; // Importar novo repositório
+import server.repository.ReplyRepository;
 import server.repository.TopicRepository;
 import server.repository.UserRepository;
-import server.service.AdminHandler; // Importar novo handler
+import server.service.AdminHandler;
 import server.service.AuthHandler;
 import server.service.ProfileHandler;
 import server.service.TopicHandler;
@@ -31,72 +31,58 @@ public class ServerApp extends JFrame {
     private volatile boolean running;
     private int port;
 
-    // Repositórios de dados
+    // Repositories
     private UserRepository userRepository;
     private TopicRepository topicRepository;
-    private ReplyRepository replyRepository; // Novo repositório
+    private ReplyRepository replyRepository;
 
-    // Mapas para gerenciar clientes
+    // Client Management Maps
     private Map<String, ClientInfo> authenticatedUsers; // token -> ClientInfo
-    private List<ClientHandler> connectedClientHandlers;
-    private Map<String, ObjectOutputStream> activeClientOutputs; // token -> ObjectOutputStream para broadcast
+    private List<ClientHandler> connectedClientHandlers; // All active client handlers
+    private Map<String, ObjectOutputStream> activeClientOutputs; // token -> ObjectOutputStream for broadcast
 
-    // Handlers de serviço
+    // Service Handlers
     private AuthHandler authHandler;
     private ProfileHandler profileHandler;
     private TopicHandler topicHandler;
     private UserDataHandler userDataHandler;
-    private AdminHandler adminHandler; // Novo handler de admin
+    private AdminHandler adminHandler;
 
     private DefaultListModel<ClientInfo> listModel;
     private JList<ClientInfo> clientList;
     private JTextArea logArea;
 
     public ServerApp() {
-        // Inicializa repositórios
+        // Initialize Repositories
         userRepository = new UserRepository();
         topicRepository = new TopicRepository();
-        replyRepository = new ReplyRepository(); // Inicializa novo repositório
+        replyRepository = new ReplyRepository();
 
-        // Inicializa estruturas de dados para clientes
+        // Initialize Client Management Structures
         authenticatedUsers = new ConcurrentHashMap<>();
         connectedClientHandlers = new CopyOnWriteArrayList<>();
         activeClientOutputs = new ConcurrentHashMap<>();
 
-        // Inicializa handlers de serviço com suas dependências e callbacks
+        // Initialize Service Handlers with their dependencies and callbacks
         authHandler = new AuthHandler(userRepository, authenticatedUsers, this::logMessage, this::updateClientListGUI);
-        topicHandler = new TopicHandler(topicRepository, replyRepository, authHandler, this::logMessage, activeClientOutputs); // Injeta replyRepository
+        topicHandler = new TopicHandler(topicRepository, replyRepository, authHandler, this::logMessage, activeClientOutputs);
         profileHandler = new ProfileHandler(userRepository, authHandler, this::logMessage, this::updateClientListGUI);
         userDataHandler = new UserDataHandler(userRepository, authHandler, this::logMessage);
-        adminHandler = new AdminHandler(userRepository, topicRepository, replyRepository, authHandler, this::logMessage, this::updateClientListGUI); // Inicializa novo handler
+        adminHandler = new AdminHandler(userRepository, topicRepository, replyRepository, authHandler, this::logMessage, this::updateClientListGUI);
 
         initializeGUI();
         askForPort();
         startServer();
     }
 
-    private void updateClientListGUI(ClientInfo clientInfo) {
-    }
-
-    private void logMessage(String message) {
-        String logEntry = "[" + new java.util.Date() + "] " + message; // Garante timestamp
-        System.out.println(logEntry);
-        SwingUtilities.invokeLater(() -> {
-            logArea.append(logEntry + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
-        });
-    }
-
-    // This method needs to be copied into your ServerApp.java
     private void initializeGUI() {
-        setTitle("TCP Server (Forum)"); // Title updated
+        setTitle("TCP Server (Forum)");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        setSize(700, 500); // Tamanho aumentado para melhor layout
+        setSize(700, 500);
         setLocationRelativeTo(null);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Painel da lista de clientes conectados e autenticados
         listModel = new DefaultListModel<>();
         clientList = new JList<>(listModel);
         clientList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -104,7 +90,6 @@ public class ServerApp extends JFrame {
         clientScrollPane.setBorder(BorderFactory.createTitledBorder("Connected & Authenticated Clients"));
         clientScrollPane.setPreferredSize(new Dimension(250, 0));
 
-        // Área de log do servidor
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -116,46 +101,22 @@ public class ServerApp extends JFrame {
 
         add(mainPanel);
 
-        // Listener para o evento de fechamento da janela
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                stopServer(); // Garante que o socket seja fechado ao sair
+                stopServer();
                 System.exit(0);
             }
         });
 
         setVisible(true);
     }
-    // Este método precisa ser copiado para dentro da sua classe ServerApp.java
-    /**
-     * Para o servidor, fechando o ServerSocket e interrompendo todos os ClientHandlers.
-     */
-    private void stopServer() {
-        running = false; // Sinaliza para o loop principal parar
-        try {
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                serverSocket.close(); // Fecha o ServerSocket, interrompendo o acceptClientsLoop
-            }
-            // Interrompe todos os ClientHandlers ativos
-            for (ClientHandler handler : connectedClientHandlers) {
-                handler.stop(); // Pede para o handler parar seu loop e fechar o socket do cliente
-            }
-            connectedClientHandlers.clear(); // Limpa a lista de handlers
-            authenticatedUsers.clear(); // Limpa os usuários autenticados
-            activeClientOutputs.clear(); // Limpa os outputs ativos
 
-            logMessage("Server stopped.");
-        } catch (IOException e) {
-            logMessage("Error stopping server: " + e.getMessage());
-        }
-    }
-    // This method also needs to be copied into your ServerApp.java
     private void askForPort() {
         String portStr = JOptionPane.showInputDialog(this, "Enter server port:", "Server Port", JOptionPane.QUESTION_MESSAGE, null, null, "12345").toString();
         try {
             port = Integer.parseInt(portStr);
-            if (port < 1024 || port > 65535) { // Portas válidas para aplicações
+            if (port < 1024 || port > 65535) {
                 throw new NumberFormatException();
             }
         } catch (NumberFormatException e) {
@@ -164,26 +125,22 @@ public class ServerApp extends JFrame {
         }
     }
 
-    // And this one too
     private void startServer() {
         try {
-            serverSocket = new ServerSocket(port); // Cria o socket UDP na porta especificada
+            serverSocket = new ServerSocket(port);
             running = true;
             logMessage("Server started on port " + port);
 
-            // Inicia um novo thread para escutar mensagens UDP, para não bloquear a GUI
-            Thread serverThread = new Thread(this::acceptClientsLoop); // Changed from serverLoop to acceptClientsLoop
-            serverThread.setDaemon(true); // Define como daemon para que o thread termine com a aplicação
-            serverThread.start();
+            Thread acceptThread = new Thread(this::acceptClientsLoop);
+            acceptThread.setDaemon(true);
+            acceptThread.start();
 
-        } catch (IOException e) { // Changed from SocketException to IOException as ServerSocket can throw it
+        } catch (IOException e) {
             logMessage("Error starting server: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "Error starting server: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
-    /**
-     * Loop principal do servidor para aceitar novas conexões de clientes.
-     */
+
     private void acceptClientsLoop() {
         while (running) {
             try {
@@ -191,13 +148,13 @@ public class ServerApp extends JFrame {
                 ClientHandler clientHandler = new ClientHandler(
                         clientSocket,
                         this::logMessage,
-                        this::updateClientListGUI,
-                        this::removeClientHandler,
+                        this::updateClientListGUI, // Callback to update GUI list
+                        this::removeClientHandler, // Callback to remove handler on disconnect
                         authHandler,
                         profileHandler,
                         topicHandler,
                         userDataHandler,
-                        adminHandler, // Passa o novo handler de admin
+                        adminHandler,
                         activeClientOutputs
                 );
                 connectedClientHandlers.add(clientHandler);
@@ -215,10 +172,74 @@ public class ServerApp extends JFrame {
         }
     }
 
-    private void removeClientHandler(ClientHandler clientHandler) {
+    // Callback to update the GUI client list
+    private void updateClientListGUI(ClientInfo clientInfo) {
+        SwingUtilities.invokeLater(() -> {
+            // Remove the client from the list if it's no longer authenticated or its token changed,
+            // then re-add or just update. This logic ensures accurate representation.
+            if (!listModel.contains(clientInfo)) {
+                // Check if an existing entry needs updating
+                boolean found = false;
+                for (int i = 0; i < listModel.getSize(); i++) {
+                    if (listModel.getElementAt(i).equals(clientInfo)) { // Compares by IP:Port
+                        listModel.setElementAt(clientInfo, i); // Update existing element
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) { // Add if not found
+                    listModel.addElement(clientInfo);
+                }
+            } else { // If already in list, just repaint to ensure name changes are reflected
+                clientList.repaint();
+            }
+
+            // Also, remove guests from list if they become authenticated and are no longer listed as guest by IP:Port
+            // This is handled by the ClientHandler's key management in activeClientOutputs.
+            // The `clientInfo.setUserId(null); clientInfo.setToken(null);` on logout/delete will make equals/hashCode
+            // effectively remove the old entry if it's not authenticated anymore by ID, but `equals` is still by IP/Port.
+            // A more robust solution might involve specific removal and re-addition if the "identity" changes,
+            // or clearing and repopulating the list based on `authenticatedUsers` map.
+            // For now, `repaint()` and `removeElement` in `removeClientHandler` help.
+        });
     }
 
-    // ... (updateClientListGUI, removeClientHandler, logMessage, stopServer, main permanecem os mesmos)
+    // Callback to remove a ClientHandler from the list when it disconnects
+    private void removeClientHandler(ClientHandler handler) {
+        connectedClientHandlers.remove(handler);
+        SwingUtilities.invokeLater(() -> {
+            listModel.removeElement(handler.getClientInfo()); // Remove the client from GUI list
+            clientList.repaint();
+        });
+    }
+
+    private void logMessage(String message) {
+        String logEntry = "[" + new java.util.Date() + "] " + message;
+        System.out.println(logEntry);
+        SwingUtilities.invokeLater(() -> {
+            logArea.append(logEntry + "\n");
+            logArea.setCaretPosition(logArea.getDocument().getLength());
+        });
+    }
+
+    private void stopServer() {
+        running = false;
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+            for (ClientHandler handler : connectedClientHandlers) {
+                handler.stop();
+            }
+            connectedClientHandlers.clear();
+            authenticatedUsers.clear();
+            activeClientOutputs.clear();
+
+            logMessage("Server stopped.");
+        } catch (IOException e) {
+            logMessage("Error stopping server: " + e.getMessage());
+        }
+    }
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new ServerApp());

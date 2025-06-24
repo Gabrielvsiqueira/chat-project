@@ -2,16 +2,18 @@ package server.repository;
 
 import server.model.User;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList; // For listAllUsernames
 
 public class UserRepository {
     private final Map<String, User> userDatabase; // username -> User object
 
     public UserRepository() {
         userDatabase = new ConcurrentHashMap<>();
-        // Adiciona alguns usuários de teste
-        userDatabase.put("admin", new User("admin", "adminpass", "Administrator", "admin"));
+        // Add test users as specified in the protocol
+        userDatabase.put("admin123", new User("admin123", "admin123", "admin123", "admin")); // Specified admin user
         userDatabase.put("user1", new User("user1", "user1pass", "User One", "common"));
         userDatabase.put("user2", new User("user2", "user2pass", "User Two", "common"));
     }
@@ -30,5 +32,9 @@ public class UserRepository {
 
     public void deleteByUsername(String username) {
         userDatabase.remove(username);
+    }
+
+    public List<String> listAllUsernames() { // New method for opcode 110
+        return new ArrayList<>(userDatabase.keySet());
     }
 }

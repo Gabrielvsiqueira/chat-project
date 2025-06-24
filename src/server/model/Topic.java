@@ -3,13 +3,13 @@ package server.model;
 import java.io.Serializable;
 
 public class Topic implements Serializable {
-    private static final long serialVersionUID = 1L; // Adicionar serialVersionUID
+    private static final long serialVersionUID = 1L;
 
     private String id;
     private String title;
     private String subject;
     private String content;
-    private String authorUserId; // O ID de usuário do autor do tópico
+    private String authorUserId; // The user ID of the topic's author
 
     public Topic(String id, String title, String subject, String content, String authorUserId) {
         this.id = id;
@@ -25,7 +25,11 @@ public class Topic implements Serializable {
     public String getContent() { return content; }
     public String getAuthorUserId() { return authorUserId; }
 
+    // Method for "deleting" a topic (option 101)
     public void markAsDeleted() {
-
+        this.title = "[DELETED]"; // Mark title
+        this.subject = "[DELETED]"; // Mark subject
+        this.content = "Mensagem Apagada"; // Content as specified in protocol 101
+        this.authorUserId = "[DELETED]"; // Optionally mark author as deleted
     }
 }

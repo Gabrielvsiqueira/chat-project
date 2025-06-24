@@ -7,14 +7,12 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
-public class ProtocolMessage implements Serializable { // Mantendo Serializable por boa prática, embora serializemos JSON String
+public class ProtocolMessage implements Serializable {
     private static final long serialVersionUID = 1L;
-    private static final Gson GSON_TO_STRING = new GsonBuilder().setPrettyPrinting().create(); // Para formatar o JSON no toString
-
+    private static final Gson GSON_TO_STRING = new GsonBuilder().setPrettyPrinting().create();
 
     @SerializedName("op")
     private String operationCode;
-
     @SerializedName("user")
     private String user;
     @SerializedName("pass")
@@ -22,7 +20,7 @@ public class ProtocolMessage implements Serializable { // Mantendo Serializable 
     @SerializedName("token")
     private String token;
     @SerializedName("msg")
-    private String messageContent; // Usado para mensagens de erro, conteúdo de tópico e conteúdo de resposta
+    private String messageContent;
     @SerializedName("nick")
     private String nickname;
     @SerializedName("new_nick")
@@ -33,48 +31,39 @@ public class ProtocolMessage implements Serializable { // Mantendo Serializable 
     private String title;
     @SerializedName("subject")
     private String subject;
-
-    @SerializedName("topic_id") // Para broadcast de tópicos (055)
+    @SerializedName("topic_id")
     private String topicId;
-    @SerializedName("topic_title") // Para broadcast de tópicos (055)
+    @SerializedName("topic_title")
     private String topicTitle;
-    @SerializedName("topic_subject") // Para broadcast de tópicos (055)
+    @SerializedName("topic_subject")
     private String topicSubject;
-    @SerializedName("topic_content") // Para broadcast de tópicos (055)
+    @SerializedName("topic_content")
     private String topicContent;
-    @SerializedName("topic_author") // Para broadcast de tópicos (055)
+    @SerializedName("topic_author")
     private String topicAuthor;
-
-    // Para "Enviar Mensagem (Responder mensagem)" (060), "Receber Respostas" (070), "Apagar Mensagem (admin)" (100)
-    @SerializedName("id") // ID da mensagem/tópico (para operações de resposta e exclusão)
-    private String id; // Definido como String para ser flexível (topicId, messageId)
-
-    // Para "Receber Respostas" (071) e "Receber Tópicos" (076)
-    @SerializedName("msg_list") // Lista genérica para mensagens/tópicos
-    private List<Map<String, String>> messageList; // Usar um nome mais genérico
-
-    // Os campos 'topics' e 'users' já existem e podem ser usados para 'msg_list' dependendo do contexto.
-    // Se "msg_list" é sempre uma lista de tópicos/mensagens, podemos reutilizar ou adicionar um novo.
-    // Vou usar 'messageList' para generalizar. Se você quiser campos separados para topics e replies, é só adicionar.
-    @SerializedName("topics") // Já existe, usado em 061
+    @SerializedName("id")
+    private String id;
+    @SerializedName("msg_list")
+    private List<Map<String, String>> messageList;
+    @SerializedName("topics")
     private List<Map<String, String>> topics;
-    @SerializedName("users") // Já existe, para listar usuários (embora o protocolo não tenha opcode para isso)
+    @SerializedName("users")
     private List<Map<String, String>> users;
-
+    @SerializedName("user_list")
+    private List<String> userList;
 
     public ProtocolMessage(String operationCode) {
         this.operationCode = operationCode;
     }
 
-    // --- Getters e Setters (já estão no seu código, só para referência) ---
+    // --- NOVO CONSTRUTOR: Para mensagens com código de operação e conteúdo ---
+    public ProtocolMessage(String operationCode, String messageContent) {
+        this.operationCode = operationCode;
+        this.messageContent = messageContent;
+    }
+    // --- FIM DO NOVO CONSTRUTOR ---
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
 
-    public List<Map<String, String>> getMessageList() { return messageList; }
-    public void setMessageList(List<Map<String, String>> messageList) { this.messageList = messageList; }
-
-    // ... (restante dos getters e setters existentes)
     public String getOperationCode() { return operationCode; }
     public void setOperationCode(String operationCode) { this.operationCode = operationCode; }
 
@@ -120,20 +109,29 @@ public class ProtocolMessage implements Serializable { // Mantendo Serializable 
     public String getTopicAuthor() { return topicAuthor; }
     public void setTopicAuthor(String topicAuthor) { this.topicAuthor = topicAuthor; }
 
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public List<Map<String, String>> getMessageList() { return messageList; }
+    public void setMessageList(List<Map<String, String>> messageList) { this.messageList = messageList; }
+
     public List<Map<String, String>> getTopics() { return topics; }
     public void setTopics(List<Map<String, String>> topics) { this.topics = topics; }
 
     public List<Map<String, String>> getUsers() { return users; }
     public void setUsers(List<Map<String, String>> users) { this.users = users; }
 
+    public List<String> getUserList() { return userList; }
+    public void setUserList(List<String> userList) { this.userList = userList; }
+
     public static ProtocolMessage createErrorMessage(String opCode, String msg) {
         ProtocolMessage errorMsg = new ProtocolMessage(opCode);
         errorMsg.setMessageContent(msg);
         return errorMsg;
     }
+
     @Override
     public String toString() {
-        // Usa GSON para serializar o próprio objeto para uma string JSON legível
         return GSON_TO_STRING.toJson(this);
     }
 }

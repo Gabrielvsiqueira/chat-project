@@ -9,16 +9,17 @@ import server.repository.ReplyRepository;
 import server.repository.TopicRepository;
 import server.repository.UserRepository;
 
+import java.util.List; // Import for List
 import java.util.function.Consumer;
 
 /**
- * Lida com as operações de administração (Alterar Cadastro de Outro, Apagar Cadastro de Outro, Apagar Mensagem).
+ * Handles administration operations (Change Other User's Profile, Delete Other User's Account, Delete Message).
  */
 public class AdminHandler {
-    private final UserRepository userRepository; // AdminHandler tem seu próprio userRepository
+    private final UserRepository userRepository;
     private final TopicRepository topicRepository;
     private final ReplyRepository replyRepository;
-    private final AuthHandler authHandler; // Para validar tokens e obter dados de usuário de forma controlada
+    private final AuthHandler authHandler; // To validate tokens and get user data
     private final Consumer<String> logConsumer;
     private final Consumer<ClientInfo> clientListUpdater;
 
@@ -26,23 +27,22 @@ public class AdminHandler {
         this.userRepository = userRepository;
         this.topicRepository = topicRepository;
         this.replyRepository = replyRepository;
-        this.authHandler = authHandler; // A injeção de AuthHandler é crucial
+        this.authHandler = authHandler;
         this.logConsumer = logConsumer;
         this.clientListUpdater = clientListUpdater;
     }
 
-    // Helper para verificar se o token pertence a um administrador
+    // Helper to check if the token belongs to an administrator
     private boolean isAdminToken(String token) {
         ClientInfo client = authHandler.getAuthenticatedClientInfo(token);
         if (client == null) {
             return false;
         }
-        // Usar o método público do AuthHandler para obter o User
         User user = authHandler.getUserByUsername(client.getUserId());
         return user != null && "admin".equals(user.getRole());
     }
 
-    // --- Operação 080: Alterar Cadastro (admin) ---
+    // --- Operation 080: Alterar Cadastro (admin) ---
     public ProtocolMessage handleChangeUserByAdmin(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String targetUser = request.getUser();
@@ -60,7 +60,18 @@ public class AdminHandler {
             return ProtocolMessage.createErrorMessage("082", "Target user cannot be null/empty.");
         }
 
-        // Use o userRepository DO PRÓPRIO ADMINHANDLER, pois ele tem acesso direto
+        // Restriction: Admin user cannot alter their own profile via 080
+        if (targetUser.equals(clientInfo.getUserId()) && "admin".equals(userRepository.findByUsername(clientInfo.getUserId()).getRole())) {
+            logConsumer.accept("Admin change profile failed: Admin cannot alter their own account via this operation (080).");
+            return ProtocolMessage.createErrorMessage("082", "Admin cannot alter their own account via this operation.");
+        }
+        // Restriction: Admin user cannot be altered by another admin via 080
+        if ("admin".equals(userRepository.findByUsername(targetUser).getRole())) {
+            logConsumer.accept("Admin change profile failed: Cannot alter another admin account.");
+            return ProtocolMessage.createErrorMessage("082", "Cannot alter another admin account.");
+        }
+
+
         User userToChange = userRepository.findByUsername(targetUser);
         if (userToChange == null) {
             logConsumer.accept("Admin change profile failed: Target user '" + targetUser + "' not found.");
@@ -95,14 +106,14 @@ public class AdminHandler {
 
         if (changed) {
             logConsumer.accept("User '" + targetUser + "' profile updated by admin successfully.");
+            return new ProtocolMessage("081", "User profile updated successfully.");
         } else {
             logConsumer.accept("Admin attempted to update user '" + targetUser + "' but no changes were made.");
+            return ProtocolMessage.createErrorMessage("082", "No changes made to profile."); // Or a specific success without change msg
         }
-
-        return new ProtocolMessage("081");
     }
 
-    // --- Operação 090: Apagar Cadastro (admin) ---
+    // --- Operation 090: Apagar Cadastro (admin) ---
     public ProtocolMessage handleDeleteUserByAdmin(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String targetUser = request.getUser();
@@ -117,9 +128,16 @@ public class AdminHandler {
             logConsumer.accept("Admin delete user failed: Target user cannot be null/empty.");
             return ProtocolMessage.createErrorMessage("092", "Target user cannot be null/empty.");
         }
-        if (targetUser.equals(clientInfo.getUserId())) {
-            logConsumer.accept("Admin delete user failed: Admin cannot delete their own account via this operation.");
+
+        // Restriction: Admin user cannot delete their own account via 090
+        if (targetUser.equals(clientInfo.getUserId()) && "admin".equals(userRepository.findByUsername(clientInfo.getUserId()).getRole())) {
+            logConsumer.accept("Admin delete user failed: Admin cannot delete their own account via this operation (090).");
             return ProtocolMessage.createErrorMessage("092", "Admin cannot delete their own account via this operation.");
+        }
+        // Restriction: Cannot delete another admin account
+        if ("admin".equals(userRepository.findByUsername(targetUser).getRole())) {
+            logConsumer.accept("Admin delete user failed: Cannot delete another admin account.");
+            return ProtocolMessage.createErrorMessage("092", "Cannot delete another admin account.");
         }
 
         User userToDelete = userRepository.findByUsername(targetUser);
@@ -131,15 +149,13 @@ public class AdminHandler {
         userRepository.deleteByUsername(targetUser);
         logConsumer.accept("User account '" + targetUser + "' deleted by admin '" + clientInfo.getUserId() + "'.");
 
-        // Considerar forçar o logout do usuário se ele estiver ativo.
-        // Isso exigiria um método como authHandler.forceLogoutUser(targetUser);
-        // O ClientHandler já o removerá do activeClientOutputs e da lista da GUI quando for detectada a desconexão
-        // ou na próxima operação do cliente, mas um logout forçado seria mais imediato.
+        // Note: Forcing logout of the deleted user is a separate concern, might need explicit call to AuthHandler
+        // if user is currently logged in.
 
-        return new ProtocolMessage("091");
+        return new ProtocolMessage("091", "User account deleted successfully.");
     }
 
-    // --- Operação 100: Apagar Mensagem (admin) ---
+    // --- Operation 100: Apagar Mensagem (admin) ---
     public ProtocolMessage handleDeleteMessage(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String messageId = request.getId();
@@ -155,18 +171,18 @@ public class AdminHandler {
             return ProtocolMessage.createErrorMessage("102", "Message ID cannot be null/empty.");
         }
 
+        // Try to find as a topic
         Topic topicToDelete = topicRepository.findById(messageId);
         if (topicToDelete != null) {
             topicToDelete.markAsDeleted();
             logConsumer.accept("Topic '" + messageId + "' marked as deleted by admin '" + clientInfo.getUserId() + "'.");
-            return new ProtocolMessage("101");
+            return new ProtocolMessage("101", "Topic deleted successfully.");
         }
 
-        // Se não for um tópico, tenta encontrar como resposta
-        // Melhorando a busca de resposta para ser mais clara
+        // If not a topic, try to find as a reply
         MessageReply replyToDelete = null;
         String parentTopicId = null;
-        // Percorre *todos* os tópicos para encontrar a resposta aninhada (menos eficiente, mas funcional)
+        // Iterate through all topics to find the nested reply (less efficient but functional for in-memory DB)
         for (Topic t : topicRepository.findAll()) {
             MessageReply foundReply = replyRepository.findReplyByIdInTopic(t.getId(), messageId);
             if (foundReply != null) {
@@ -179,10 +195,28 @@ public class AdminHandler {
         if (replyToDelete != null) {
             replyToDelete.markAsDeleted();
             logConsumer.accept("Reply '" + messageId + "' in topic '" + parentTopicId + "' marked as deleted by admin '" + clientInfo.getUserId() + "'.");
-            return new ProtocolMessage("101");
+            return new ProtocolMessage("101", "Reply deleted successfully.");
         }
 
         logConsumer.accept("Admin delete message failed: Message/Topic with ID '" + messageId + "' not found.");
         return ProtocolMessage.createErrorMessage("102", "Message/Topic not found.");
+    }
+
+    // --- Operation 110: Retornar TODOS Usuários (admin) ---
+    public ProtocolMessage handleListAllUsers(ProtocolMessage request, ClientInfo clientInfo) {
+        String token = request.getToken();
+
+        logConsumer.accept("Admin '" + clientInfo.getUserId() + "' attempting to list all users.");
+
+        if (token == null || token.isEmpty() || !isAdminToken(token)) {
+            logConsumer.accept("List all users failed: Invalid or non-admin token.");
+            return ProtocolMessage.createErrorMessage("112", "Invalid or non-admin token.");
+        }
+
+        List<String> allUsernames = userRepository.listAllUsernames();
+        ProtocolMessage response = new ProtocolMessage("111");
+        response.setUserList(allUsernames); // Set the user_list field
+        logConsumer.accept("Sent 111 response with " + allUsernames.size() + " users.");
+        return response;
     }
 }

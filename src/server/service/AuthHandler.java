@@ -11,14 +11,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
- * Lida com as operações de autenticação (Login, Registro, Logout).
+ * Handles authentication operations (Login, Register, Logout).
  */
 public class AuthHandler {
     private final UserRepository userRepository;
     private final Map<String, ClientInfo> authenticatedUsers; // token -> ClientInfo
     private final AtomicInteger nextTokenId;
     private final Consumer<String> logConsumer;
-    private final Consumer<ClientInfo> clientListUpdater; // Para atualizar a GUI do servidor
+    private final Consumer<ClientInfo> clientListUpdater;
 
     public AuthHandler(UserRepository userRepository, Map<String, ClientInfo> authenticatedUsers, Consumer<String> logConsumer, Consumer<ClientInfo> clientListUpdater) {
         this.userRepository = userRepository;
@@ -29,20 +29,17 @@ public class AuthHandler {
     }
 
     /**
-     * Manipula a operação de Login (000).
-     * Valida credenciais, gera token e autentica o cliente.
-     *
-     * @param request    A mensagem de requisição de login.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     * @return ProtocolMessage de sucesso (001) ou erro (002).
+     * Handles Login operation (000).
+     * @param request The login request message.
+     * @param clientInfo The ClientInfo associated with the client's endpoint.
+     * @return ProtocolMessage for success (001) or error (002).
      */
-    public ProtocolMessage handleLogin(ProtocolMessage request, ClientInfo clientInfo) { // <--- ESTE MÉTODO
+    public ProtocolMessage handleLogin(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
         String pass = request.getPassword();
 
         logConsumer.accept("Attempting login for user: '" + user + "' from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
 
-        // Validação de entrada
         if (user == null || user.isEmpty() || pass == null || pass.isEmpty()) {
             logConsumer.accept("Login failed: User or password cannot be null/empty.");
             return ProtocolMessage.createErrorMessage("002", "User or password cannot be null/empty.");
@@ -57,14 +54,13 @@ public class AuthHandler {
             return ProtocolMessage.createErrorMessage("002", "Incorrect password for user '" + user + "'.");
         }
 
-        // Gera token e autentica o cliente
         String token = storedUser.getRole().substring(0, 1) + String.format("%04d", nextTokenId.getAndIncrement());
         clientInfo.setUserId(user);
         clientInfo.setName(storedUser.getNickname());
         clientInfo.setToken(token);
         authenticatedUsers.put(token, clientInfo);
 
-        clientListUpdater.accept(clientInfo); // Atualiza a GUI
+        clientListUpdater.accept(clientInfo);
         logConsumer.accept("Client '" + user + "' logged in with token: " + token + " from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort() + ". Nickname: " + storedUser.getNickname());
 
         ProtocolMessage response = new ProtocolMessage("001");
@@ -74,11 +70,10 @@ public class AuthHandler {
     }
 
     /**
-     * Manipula a operação de Cadastro (010).
-     *
-     * @param request    A mensagem de requisição de cadastro.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     * @return ProtocolMessage de sucesso (011) ou erro (012).
+     * Handles Register operation (010).
+     * @param request The registration request message.
+     * @param clientInfo The ClientInfo associated with the client's endpoint.
+     * @return ProtocolMessage for success (011) or error (012).
      */
     public ProtocolMessage handleRegister(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
@@ -87,7 +82,6 @@ public class AuthHandler {
 
         logConsumer.accept("Attempting registration for user: '" + user + "', nickname: '" + nick + "' from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
 
-        // Validação de entrada
         if (user == null || user.isEmpty() || nick == null || nick.isEmpty() || pass == null || pass.isEmpty()) {
             logConsumer.accept("Registration failed: User, nickname, or password cannot be null/empty.");
             return ProtocolMessage.createErrorMessage("012", "User, nickname, or password cannot be null/empty.");
@@ -97,7 +91,6 @@ public class AuthHandler {
             return ProtocolMessage.createErrorMessage("012", "User '" + user + "' already exists.");
         }
 
-        // Validação de formato (conforme o protocolo)
         if (user.length() < 6 || user.length() > 16 || !user.matches("[a-zA-Z0-9]+")) {
             logConsumer.accept("Registration failed: Username must be 6-16 alphanumeric characters.");
             return ProtocolMessage.createErrorMessage("012", "Username must be 6-16 alphanumeric characters.");
@@ -111,20 +104,19 @@ public class AuthHandler {
             return ProtocolMessage.createErrorMessage("012", "Nickname must be 6-16 alphanumeric characters.");
         }
 
-        User newUser = new User(user, pass, nick, "common"); // Novo usuário com papel "common"
+        User newUser = new User(user, pass, nick, "common");
         userRepository.save(newUser);
 
         logConsumer.accept("New user registered: '" + user + "' (" + nick + ") from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
 
-        return new ProtocolMessage("011");
+        return new ProtocolMessage("011", "Registration successful!"); // Added success message
     }
 
     /**
-     * Manipula a operação de Logout (020).
-     *
-     * @param request    A mensagem de requisição de logout.
-     * @param clientInfo O ClientInfo associado ao endpoint do cliente.
-     * @return ProtocolMessage de sucesso (021) ou erro (022).
+     * Handles Logout operation (020).
+     * @param request The logout request message.
+     * @param clientInfo The ClientInfo associated with the client's endpoint.
+     * @return ProtocolMessage for success (021) or error (022).
      */
     public ProtocolMessage handleLogout(ProtocolMessage request, ClientInfo clientInfo) {
         String user = request.getUser();
@@ -137,26 +129,25 @@ public class AuthHandler {
             return ProtocolMessage.createErrorMessage("022", "Invalid token or token does not match user.");
         }
 
-        // Remova o token apenas se ele pertence ao usuário que está fazendo a requisição.
-        // Já verificamos isso acima, então podemos remover com segurança.
         authenticatedUsers.remove(token);
 
-        clientInfo.setUserId(null); // Limpa as informações de autenticação do ClientInfo
-        clientInfo.setToken(null);
-        clientInfo.setName("Guest"); // Reseta o nome de exibição
+        // Keep clientInfo details for logging on the server side until ClientHandler is removed.
+        // clientInfo.setUserId(null); // Protocol says token is removed from memory, not necessarily clear ClientInfo
+        // clientInfo.setToken(null);
+        // clientInfo.setName("Guest"); // ClientInfo might still be needed by ClientHandler until connection closes.
 
-        clientListUpdater.accept(clientInfo); // Atualiza a GUI para remover o cliente
+        clientListUpdater.accept(clientInfo); // Update GUI to reflect logout
         logConsumer.accept("Client '" + user + "' logged out. Token: " + token + " from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
 
-        return new ProtocolMessage("021");
+        return new ProtocolMessage("021", "Logged out successfully."); // Added success message
     }
 
-    // Método auxiliar para outros handlers obterem ClientInfo autenticado
+    // Helper method for other handlers to get authenticated ClientInfo
     public ClientInfo getAuthenticatedClientInfo(String token) {
         return authenticatedUsers.get(token);
     }
 
-    // Método auxiliar para outros handlers obterem User (para nicknames, roles, etc.)
+    // Helper method for other handlers to get User (for nicknames, roles, etc.)
     public User getUserByUsername(String username) {
         return userRepository.findByUsername(username);
     }

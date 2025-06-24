@@ -1,74 +1,43 @@
-# UDP Communication System
+# Forum Application (TCP-based)
 
-This Java project implements a client-server communication system using UDP protocol with the following features:
+This Java project implements a client-server communication system using the TCP protocol with the following features:
 
 ## Project Structure
 
-- `common.ProtocoloMessage.java` - common.ProtocoloMessage class with serialization support
+- `client.ClientApp.java` - Main client application with GUI
+- `client.ClientConnection.java` - Manages TCP connection for the client
 - `common.ClientInfo.java` - Client information container
-- `common.MessageUtils.java` - Utility methods for protocoloMessage serialization
-- `UDPServer.java` - Server application with GUI
-- `UDPClient.java` - Client application with GUI
+- `common.ProtocolMessage.java` - Standardized message format
+- `common.SerializationHelper.java` - Utility methods for message serialization
+- `server.ServerApp.java` - Server application with GUI
+- `server.ClientHandler.java` - Handles each connected client in a separate thread
+- `server.model.User.java` - User data model
+- `server.model.Topic.java` - Forum topic data model
+- `server.model.MessageReply.java` - Topic reply data model
+- `server.repository.*` - In-memory repositories for users, topics, and replies
+- `server.service.*` - Logic handlers for authentication, profiles, admin actions, and forum interaction
 
 ## How to Run
-- To run this application, you'll need to install the GSON library. 
-- We recommend installing the library using this link: [Download da biblioteca GSON](https://search.maven.org/artifact/com.google.code.gson/gson/2.13.1/jar?eh=)
-- After downloading, you'll need to add the library as a dependency to this project.
+
+- To run this application, you'll need to install the GSON library.
+- Recommended download: [Download GSON Library](https://search.maven.org/artifact/com.google.code.gson/gson/2.10.1/jar)
 
 ## Install GSON in Project Dependencies
-- Go to File > Project Structure... `(or press Ctrl+Alt+Shift+S)`.
-- In the "Project Structure" window, select Modules from the left-hand menu. Then, select your project's module.
-- Go to the Dependencies tab.
-- Click the + (plus) button on the right side and select JARs or directories....
-- Navigate to your project's lib (or libs) folder, select the GSON JAR file you downloaded, and click OK.
-- Ensure that the dependency's "Scope" is set to Compile (or Runtime, depending on your needs, but Compile is most common for libraries).
-- Click Apply and then OK.
+
+- Go to `File > Project Structure...` (or press `Ctrl+Alt+Shift+S`)
+- In "Project Structure", go to **Modules** and select your module
+- Open the **Dependencies** tab
+- Click `+` and choose **JARs or directories...**
+- Locate and select the downloaded GSON JAR file
+- Set scope to **Compile**
+- Click **Apply** and **OK**
 
 ### Compile all Java files:
-```bash
-javac *.java
-```
 
-### Start the server:
-```bash
-java UDPServer
-```
+- Start the server:
 
-### Start client(s):
-```bash
-java UDPClient
-```
+ `java -cp ".:<path_to_gson>/gson-2.10.1.jar" server.ServerApp`
+- Start Client():
 
-## Features
-
-### Server Features:
-- Maintains list of connected clients (IP, port, name)
-- Handles client connections and disconnections
-- Forwards messages between clients
-- Broadcasts messages to all clients
-- Real-time GUI showing connected clients and server log
-
-### Client Features:
-- Connect/disconnect to/from server
-- Send messages to specific clients or broadcast to all
-- Real-time protocoloMessage reception
-- User-friendly GUI with connection management
-
-## common.ProtocoloMessage Protocol:
-1. **CLIENT_CONNECT** - Client joins the system
-2. **CLIENT_LIST_UPDATE** - Server sends updated client list
-3. **SEND_MESSAGE** - Client sends protocoloMessage
-4. **MESSAGE_RECEIVED** - Server forwards protocoloMessage
-5. **CLIENT_DISCONNECT** - Client leaves the system
-
-## Usage Instructions:
-
-1. Start the server and specify a port or use default port (default: 12345)
-2. Run client applications
-3. In each client, enter server details and your name
-4. Click "Connect" to join the messaging system
-5. Select target client or check "Broadcast to all"
-6. Type and send messages
-7. Use "Disconnect" to leave the system
-
-The system supports multiple concurrent clients and real-time protocoloMessage exchange.
+`java -cp ".:<path_to_gson>/gson-2.10.1.jar" client.ClientApp
+`

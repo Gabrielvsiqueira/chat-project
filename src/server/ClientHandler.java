@@ -22,7 +22,7 @@ public class ClientHandler implements Runnable {
     private ClientInfo clientInfo;
     private final ObjectInputStream in;
     private final ObjectOutputStream out;
-    private final Consumer<String> logConsumer; // Este é o logMessage do ServerApp
+    private final Consumer<String> logConsumer;
     private final Consumer<ClientInfo> clientListUpdater;
     private final Consumer<ClientHandler> clientDisconnectedCallback;
 
@@ -62,7 +62,6 @@ public class ClientHandler implements Runnable {
 
         this.clientInfo = new ClientInfo("Guest", clientSocket.getInetAddress(), clientSocket.getPort());
         this.activeClientOutputs.put(clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort(), out);
-        // Log inicial da conexão
         logMessageWithClientContext("New client connected: " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
 
         clientListUpdater.accept(clientInfo);
@@ -72,7 +71,6 @@ public class ClientHandler implements Runnable {
         return clientInfo;
     }
 
-    // Método auxiliar para logar com contexto do cliente
     private void logMessageWithClientContext(String message) {
         String clientContext = clientInfo.getUserId() != null && !clientInfo.getUserId().isEmpty()
                 ? clientInfo.getUserId() + " (" + clientInfo.getName() + ")"
@@ -85,33 +83,25 @@ public class ClientHandler implements Runnable {
         try {
             while (running) {
                 ProtocolMessage request = SerializationHelper.readMessage(in);
-                // Log da requisição recebida
-                logMessageWithClientContext("Received op: " + request.getOperationCode() + " -> " + request.toString()); // toString() para ver o payload (se implementado)
+                logMessageWithClientContext("Received op: " + request.getOperationCode() + " -> " + request.toString());
 
-                // --- BLOCO DEDICADO PARA A OPERAÇÃO DE LOGIN (000) ---
                 if ("000".equals(request.getOperationCode())) {
                     ProtocolMessage loginResponse = authHandler.handleLogin(request, clientInfo);
                     if ("001".equals(loginResponse.getOperationCode())) {
-                        // Se login bem-sucedido, atualiza a chave no mapa de outputs para usar o token
                         String oldKey = clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort();
                         activeClientOutputs.remove(oldKey);
                         activeClientOutputs.put(clientInfo.getToken(), out);
-                        // Atualiza o contexto do log após o login
                         logMessageWithClientContext("Login successful. Token: " + clientInfo.getToken());
                     } else {
                         logMessageWithClientContext("Login failed. Response: " + loginResponse.getMessageContent());
                     }
                     SerializationHelper.writeMessage(loginResponse, out);
-                    // O log de envio da resposta já está na camada de SerializaçãoHelper, mas pode ser redundante aqui
-                    // logMessageWithClientContext("Sent response " + loginResponse.getOperationCode());
                     continue;
                 }
-                // --- FIM DO BLOCO DE LOGIN ---
 
                 ProtocolMessage response = processMessage(request);
                 if (response != null) {
                     SerializationHelper.writeMessage(response, out);
-                    // Log da resposta enviada
                     logMessageWithClientContext("Sent response op: " + response.getOperationCode() + " -> " + response.toString());
                 }
             }
@@ -132,11 +122,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    // `processMessage` não precisa chamar `logMessageWithClientContext` diretamente.
-    // Ele retorna uma `ProtocolMessage` que é logada no `run()`.
-    // No entanto, os handlers de serviço (AuthHandler, TopicHandler, etc.)
-    // que recebem `logConsumer` em seus construtores, precisam usar esse `logConsumer`
-    // para registrar suas ações internas (ex: "User not found").
     private ProtocolMessage processMessage(ProtocolMessage request) {
         String opCode = request.getOperationCode();
 
@@ -161,8 +146,9 @@ public class ClientHandler implements Runnable {
             case "080": return adminHandler.handleChangeUserByAdmin(request, clientInfo);
             case "090": return adminHandler.handleDeleteUserByAdmin(request, clientInfo);
             case "100": return adminHandler.handleDeleteMessage(request, clientInfo);
+            case "110": return adminHandler.handleListAllUsers(request, clientInfo); // Handle new 110 opcode
+            case "999": return ProtocolMessage.createErrorMessage("999", "Client-side error received: " + request.getMessageContent()); // Handle client-side errors
             default:
-                // Loga o erro diretamente se o opCode é desconhecido
                 logMessageWithClientContext("Unknown operation code: " + opCode);
                 return ProtocolMessage.createErrorMessage("999", "Unknown operation code: " + opCode);
         }
@@ -196,7 +182,6 @@ public class ClientHandler implements Runnable {
                 activeClientOutputs.remove(clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
             }
             clientDisconnectedCallback.accept(this);
-            // Log final da desconexão
             logMessageWithClientContext("Disconnected.");
         }
     }

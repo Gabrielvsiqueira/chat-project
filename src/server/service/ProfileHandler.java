@@ -8,13 +8,13 @@ import server.repository.UserRepository;
 import java.util.function.Consumer;
 
 /**
- * Lida com as operações de alteração de perfil e exclusão de conta.
+ * Handles profile change and account deletion operations.
  */
 public class ProfileHandler {
     private final UserRepository userRepository;
-    private final AuthHandler authHandler; // Para validar tokens
+    private final AuthHandler authHandler; // To validate tokens
     private final Consumer<String> logConsumer;
-    private final Consumer<ClientInfo> clientListUpdater; // Para atualizar a GUI do servidor
+    private final Consumer<ClientInfo> clientListUpdater; // To update server GUI
 
     public ProfileHandler(UserRepository userRepository, AuthHandler authHandler, Consumer<String> logConsumer, Consumer<ClientInfo> clientListUpdater) {
         this.userRepository = userRepository;
@@ -32,11 +32,18 @@ public class ProfileHandler {
 
         logConsumer.accept("Attempting profile change for user: '" + user + "' from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort() + ". New Nick: " + newNick + ", New Pass Provided: " + (newPass != null && !newPass.isEmpty()));
 
-        // Valida token e usuário
+        // Validate token and user
         ClientInfo authenticatedClient = authHandler.getAuthenticatedClientInfo(token);
         if (authenticatedClient == null || !authenticatedClient.getUserId().equals(user)) {
             logConsumer.accept("Profile change failed: Invalid or mismatched token for user '" + user + "'.");
             return ProtocolMessage.createErrorMessage("032", "Invalid or expired token.");
+        }
+
+        // Restriction: Admin user cannot alter their own profile via 030
+        User requestingUser = userRepository.findByUsername(user);
+        if (requestingUser != null && "admin".equals(requestingUser.getRole())) {
+            logConsumer.accept("Profile change failed: Admin user cannot alter their own profile via this operation (030).");
+            return ProtocolMessage.createErrorMessage("032", "Admin user cannot alter their own profile via this operation.");
         }
 
         User storedUser = userRepository.findByUsername(user);
@@ -54,7 +61,7 @@ public class ProfileHandler {
             }
             if (!oldNick.equals(newNick)) {
                 storedUser.setNickname(newNick);
-                clientInfo.setName(newNick); // Atualiza o nome de exibição no ClientInfo
+                clientInfo.setName(newNick); // Update display name in ClientInfo
                 changed = true;
                 logConsumer.accept("User '" + user + "' changed nickname from '" + oldNick + "' to '" + newNick + "'.");
             }
@@ -73,12 +80,12 @@ public class ProfileHandler {
 
         if (changed) {
             logConsumer.accept("User '" + user + "' profile updated successfully.");
-            clientListUpdater.accept(clientInfo); // Força a atualização visual da lista
+            clientListUpdater.accept(clientInfo); // Force visual update of the list
+            return new ProtocolMessage("031", "Profile updated successfully!"); // Added success message
         } else {
             logConsumer.accept("User '" + user + "' sent profile update request but no changes were made.");
+            return ProtocolMessage.createErrorMessage("032", "No changes made to profile.");
         }
-
-        return new ProtocolMessage("031");
     }
 
     public ProtocolMessage handleDeleteAccount(ProtocolMessage request, ClientInfo clientInfo) {
@@ -94,21 +101,26 @@ public class ProfileHandler {
             return ProtocolMessage.createErrorMessage("042", "Invalid token or token does not match user.");
         }
 
+        // Restriction: Admin user cannot delete their own account via 040
         User storedUser = userRepository.findByUsername(user);
+        if (storedUser != null && "admin".equals(storedUser.getRole())) {
+            logConsumer.accept("Account deletion failed: Admin user cannot delete their own account via this operation (040).");
+            return ProtocolMessage.createErrorMessage("042", "Admin user cannot delete their own account via this operation.");
+        }
+
         if (storedUser == null || !storedUser.getPassword().equals(pass)) {
             logConsumer.accept("Account deletion failed: Incorrect password or user does not exist.");
             return ProtocolMessage.createErrorMessage("042", "Incorrect password or user does not exist.");
         }
 
         userRepository.deleteByUsername(user);
-        authenticatedClient.setToken(null);
-        authenticatedClient.setUserId(null);
-        authenticatedClient.setName("Guest");
-        // Remove do mapa de autenticados (feito pelo AuthHandler)
-        // authHandler.authenticatedUsers.remove(token); // Isso é tratado no AuthHandler
-        clientListUpdater.accept(clientInfo); // Atualiza a GUI para remover o cliente
+        // Clean ClientInfo on server side, client will disconnect
+        // authenticatedClient.setToken(null);
+        // authenticatedClient.setUserId(null);
+        // authenticatedClient.setName("Guest");
+        clientListUpdater.accept(clientInfo); // Update GUI to remove the client
 
         logConsumer.accept("User account '" + user + "' deleted from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
-        return new ProtocolMessage("041");
+        return new ProtocolMessage("041", "Account deleted successfully."); // Added success message
     }
 }

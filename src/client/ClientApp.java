@@ -38,8 +38,7 @@ public class ClientApp extends JFrame {
 
     private JTextField userIdToRetrieveField;
     private JButton retrieveUserDataButton;
-    // Renamed for clarity and consistency with protocol 075
-    private JButton getAllTopicsButton; // For 075 (formerly listTopicsButton)
+    private JButton getAllTopicsButton; // For 075
 
     private JTextField replyTopicIdField;
     private JTextArea replyMessageArea;
@@ -57,10 +56,12 @@ public class ClientApp extends JFrame {
     private JTextField adminDeleteMessageIdField;
     private JButton adminDeleteMessageButton;
 
-    private JTextArea receivedMessagesArea; // Area to display received messages and client logs
+    // New admin button for 110
+    private JButton adminListAllUsersButton;
 
-    // New: JTabbedPane to organize the main content sections
-    private JTabbedPane mainTabbedPane;
+    private JTextArea receivedMessagesArea;
+
+    private JTabbedPane mainTabbedPane; // JTabbedPane to organize the main content sections
 
     public ClientApp() {
         connection = new ClientConnection(this::handleReceivedMessage, this::appendReceivedMessage);
@@ -70,29 +71,22 @@ public class ClientApp extends JFrame {
     private void initializeGUI() {
         setTitle("TCP Client (Forum)");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        // Initial size can remain relatively large, as tabs will optimize internal space
         setSize(800, 950);
         setLocationRelativeTo(null);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Top Panel: Server Connection & Authentication / Data Retrieval
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.add(createAuthPanel(), BorderLayout.NORTH);
         topPanel.add(createDataRetrievalPanel(), BorderLayout.CENTER);
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // --- Improvement: Use JTabbedPane for the central functional areas ---
         mainTabbedPane = new JTabbedPane();
-        // Add your existing panels as tabs
         mainTabbedPane.addTab("Create Topic", createTopicPanel());
         mainTabbedPane.addTab("Replies", createReplyPanel());
         mainTabbedPane.addTab("Admin Operations", createAdminPanel());
-        // You can add more tabs here if you organize other functionalities later
         mainPanel.add(mainTabbedPane, BorderLayout.CENTER);
-        // --- End JTabbedPane Improvement ---
 
-        // Bottom Panel: Received Messages / Client Log
         JPanel receivedPanel = new JPanel(new BorderLayout());
         receivedPanel.setBorder(BorderFactory.createTitledBorder("Forum Messages / Client Log"));
         receivedMessagesArea = new JTextArea(15, 0);
@@ -111,26 +105,21 @@ public class ClientApp extends JFrame {
                 if (connected.get()) {
                     sendLogoutRequest();
                     try {
-                        Thread.sleep(500); // Give a small grace period for logout message
+                        Thread.sleep(500);
                     } catch (InterruptedException interruptedException) {
-                        Thread.currentThread().interrupt(); // Restore interrupt status
+                        Thread.currentThread().interrupt();
                     }
                 }
-                connection.disconnect(); // Ensure TCP connection is closed
+                connection.disconnect(); // Socket closed only on program exit
                 appendReceivedMessage("Client application closing.");
                 System.exit(0);
             }
         });
 
-        // Call updateGUIState AFTER ALL components have been initialized and added to the layout.
         updateGUIState();
         setVisible(true);
     }
 
-    /**
-     * Creates and configures the server connection and authentication panel.
-     * Ensures all components are initialized here.
-     */
     private JPanel createAuthPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Server Connection & Authentication"));
@@ -190,10 +179,6 @@ public class ClientApp extends JFrame {
         return panel;
     }
 
-    /**
-     * Creates and configures the panel for data retrieval (Op: 005) and getting all topics (Op: 075).
-     * Ensures all components are initialized here.
-     */
     private JPanel createDataRetrievalPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Retrieve Server Data (Op: 005) / Get All Topics (Op: 075)"));
@@ -221,14 +206,9 @@ public class ClientApp extends JFrame {
         return panel;
     }
 
-    /**
-     * Creates and configures the panel for creating forum topics (Op: 050).
-     * Removes the titled border as the tab provides the title.
-     * Ensures all components are initialized here.
-     */
     private JPanel createTopicPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        // Removed: panel.setBorder(BorderFactory.createTitledBorder("Create Forum Topic (050)"));
+        // No longer needs a titled border as the tab provides the title
 
         JPanel inputPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -265,11 +245,6 @@ public class ClientApp extends JFrame {
         return panel;
     }
 
-    /**
-     * Creates and configures the panel for replying to topics (Op: 060) and getting replies (Op: 070).
-     * Removes the titled border as the tab provides the title.
-     * Ensures all components are initialized here.
-     */
     private JPanel createReplyPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         // Removed: panel.setBorder(BorderFactory.createTitledBorder("Reply to Topic (060) / Get Replies (070)"));
@@ -312,11 +287,6 @@ public class ClientApp extends JFrame {
         return panel;
     }
 
-    /**
-     * Creates and configures the panel for administrator operations.
-     * Removes the titled border as the tab provides the title.
-     * Ensures all components are initialized here.
-     */
     private JPanel createAdminPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
         // Removed: panel.setBorder(BorderFactory.createTitledBorder("Admin Operations (Requires Admin Token)"));
@@ -363,45 +333,41 @@ public class ClientApp extends JFrame {
         adminDeleteMessageButton.addActionListener(e -> sendAdminDeleteMessageRequest());
         panel.add(adminDeleteMessageButton, gbc);
 
+        // New admin button for 110
+        gbc.gridx = 0; gbc.gridy = 9; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.NONE; gbc.anchor = GridBagConstraints.CENTER;
+        adminListAllUsersButton = new JButton("List All Users (Admin) (110)");
+        adminListAllUsersButton.addActionListener(e -> sendAdminListAllUsersRequest());
+        panel.add(adminListAllUsersButton, gbc);
+
         return panel;
     }
 
-    /**
-     * Updates the enabled/disabled state of GUI components
-     * based on connection and authentication status.
-     */
     private void updateGUIState() {
         boolean isLoggedIn = connection.isConnected() && currentToken != null;
 
-        // Connection and authentication fields
         serverHostField.setEnabled(!isLoggedIn);
         serverPortField.setEnabled(!isLoggedIn);
         usernameField.setEnabled(!isLoggedIn);
         passwordField.setEnabled(!isLoggedIn);
 
-        // Registration/Update fields (always enabled for input, but actions depend on login)
         nicknameField.setEnabled(true);
         newPasswordField.setEnabled(true);
 
-        // Authentication buttons
         loginButton.setEnabled(!isLoggedIn);
         registerButton.setEnabled(!isLoggedIn);
         logoutButton.setEnabled(isLoggedIn);
         updateProfileButton.setEnabled(isLoggedIn);
         deleteAccountButton.setEnabled(isLoggedIn);
 
-        // Topic panel
         topicTitleField.setEnabled(isLoggedIn);
         topicSubjectField.setEnabled(isLoggedIn);
         topicMessageArea.setEnabled(isLoggedIn);
         createTopicButton.setEnabled(isLoggedIn);
 
-        // Data retrieval panel
         userIdToRetrieveField.setEnabled(isLoggedIn);
         retrieveUserDataButton.setEnabled(isLoggedIn);
         getAllTopicsButton.setEnabled(isLoggedIn);
 
-        // Reply panel
         replyTopicIdField.setEnabled(isLoggedIn);
         replyMessageArea.setEnabled(isLoggedIn);
         sendReplyButton.setEnabled(isLoggedIn);
@@ -409,7 +375,6 @@ public class ClientApp extends JFrame {
         getRepliesTopicIdField.setEnabled(isLoggedIn);
         getRepliesButton.setEnabled(isLoggedIn);
 
-        // Admin operations (require admin token)
         boolean isAdmin = isLoggedIn && currentToken != null && currentToken.startsWith("a");
         adminTargetUserField.setEnabled(isAdmin);
         adminNewNickField.setEnabled(isAdmin);
@@ -418,8 +383,8 @@ public class ClientApp extends JFrame {
         adminDeleteUserButton.setEnabled(isAdmin);
         adminDeleteMessageIdField.setEnabled(isAdmin);
         adminDeleteMessageButton.setEnabled(isAdmin);
+        adminListAllUsersButton.setEnabled(isAdmin); // Enable/disable for 110
 
-        // If not logged in, ensure admin fields are cleared for security/clarity
         if (!isLoggedIn) {
             adminTargetUserField.setText("");
             adminNewNickField.setText("");
@@ -428,11 +393,6 @@ public class ClientApp extends JFrame {
         }
     }
 
-    /**
-     * Handles received messages from the server, updating the GUI.
-     * This method is called on the Event Dispatch Thread (EDT) via SwingUtilities.invokeLater.
-     * @param message The received ProtocolMessage.
-     */
     private void handleReceivedMessage(ProtocolMessage message) {
         SwingUtilities.invokeLater(() -> {
             String opCode = message.getOperationCode();
@@ -445,15 +405,14 @@ public class ClientApp extends JFrame {
                     connected.set(true);
                     updateGUIState();
                     appendReceivedMessage("Login successful! Welcome, " + currentUsername + ".");
-                    // After successful login, switch to the "Create Topic" tab
-                    mainTabbedPane.setSelectedIndex(0);
+                    mainTabbedPane.setSelectedIndex(0); // Switch to the "Create Topic" tab
                     break;
                 case "002": // Login Error
                     appendReceivedMessage("SERVER ERROR (002 - Login Failed): " + messageDetails);
                     connected.set(false);
                     currentToken = null;
                     currentUsername = null;
-                    connection.disconnect();
+                    connection.disconnect(); // Socket remains active until app exit
                     updateGUIState();
                     break;
                 case "006": // Retrieve User Data Success
@@ -466,7 +425,7 @@ public class ClientApp extends JFrame {
                     break;
                 case "007": appendReceivedMessage("SERVER ERROR (007 - Get User Data Failed): " + messageDetails); break;
                 case "011": // Register Success
-                    appendReceivedMessage("Registration successful! You can now log in.");
+                    appendReceivedMessage("Registration successful! You can now log in. " + messageDetails); // Use msg field
                     usernameField.setText("");
                     passwordField.setText("");
                     nicknameField.setText("");
@@ -476,15 +435,14 @@ public class ClientApp extends JFrame {
                     currentToken = null;
                     currentUsername = null;
                     connected.set(false);
-                    connection.disconnect();
+                    // connection.disconnect(); // Socket remains active until app exit, as per protocol
                     updateGUIState();
-                    appendReceivedMessage("Logged out successfully.");
-                    // After logout, switch back to the "Create Topic" tab
+                    appendReceivedMessage("Logged out successfully. " + messageDetails); // Use msg field
                     mainTabbedPane.setSelectedIndex(0);
                     break;
                 case "022": appendReceivedMessage("SERVER ERROR (022 - Logout Failed): " + messageDetails); break;
                 case "031": // Update Profile Success
-                    appendReceivedMessage("Profile updated successfully!");
+                    appendReceivedMessage("Profile updated successfully! " + messageDetails); // Use msg field
                     newPasswordField.setText("");
                     nicknameField.setText("");
                     break;
@@ -493,16 +451,16 @@ public class ClientApp extends JFrame {
                     currentToken = null;
                     currentUsername = null;
                     connected.set(false);
-                    connection.disconnect();
+                    // connection.disconnect(); // Socket remains active until app exit, as per protocol
                     updateGUIState();
-                    appendReceivedMessage("Account deleted successfully.");
+                    appendReceivedMessage("Account deleted successfully. " + messageDetails); // Use msg field
                     usernameField.setText("");
                     passwordField.setText("");
-                    mainTabbedPane.setSelectedIndex(0); // Go to a default tab
+                    mainTabbedPane.setSelectedIndex(0);
                     break;
                 case "042": appendReceivedMessage("SERVER ERROR (042 - Account Deletion Failed): " + messageDetails); break;
                 case "051": // Create Topic Success
-                    appendReceivedMessage("Forum topic created successfully!");
+                    appendReceivedMessage("Forum topic created successfully! " + messageDetails); // Use msg field
                     topicTitleField.setText("");
                     topicSubjectField.setText("");
                     topicMessageArea.setText("");
@@ -518,7 +476,7 @@ public class ClientApp extends JFrame {
                     appendReceivedMessage("---------------------------\n");
                     break;
                 case "061": // Send Reply Success
-                    appendReceivedMessage("Reply sent successfully!");
+                    appendReceivedMessage("Reply sent successfully! " + messageDetails); // Use msg field
                     replyTopicIdField.setText("");
                     replyMessageArea.setText("");
                     break;
@@ -561,29 +519,42 @@ public class ClientApp extends JFrame {
                     break;
                 case "077": appendReceivedMessage("SERVER ERROR (077 - Get Topics Failed): " + messageDetails); break;
                 case "081": // Admin Update User Success
-                    appendReceivedMessage("User profile updated by admin successfully!");
+                    appendReceivedMessage("User profile updated by admin successfully! " + messageDetails); // Use msg field
                     adminTargetUserField.setText("");
                     adminNewNickField.setText("");
                     adminNewPassField.setText("");
                     break;
                 case "082": appendReceivedMessage("SERVER ERROR (082 - Admin Update User Failed): " + messageDetails); break;
                 case "091": // Admin Delete User Success
-                    appendReceivedMessage("User account deleted by admin successfully!");
+                    appendReceivedMessage("User account deleted by admin successfully! " + messageDetails); // Use msg field
                     adminTargetUserField.setText("");
                     break;
                 case "092": appendReceivedMessage("SERVER ERROR (092 - Admin Delete User Failed): " + messageDetails); break;
                 case "101": // Admin Delete Message Success
-                    appendReceivedMessage("Message/Topic deleted by admin successfully!");
+                    appendReceivedMessage("Message/Topic deleted by admin successfully! " + messageDetails); // Use msg field
                     adminDeleteMessageIdField.setText("");
                     break;
                 case "102": appendReceivedMessage("SERVER ERROR (102 - Admin Delete Message Failed): " + messageDetails); break;
+                case "111": // List All Users Response (Admin)
+                    List<String> userList = message.getUserList(); // Use getUserList
+                    if (userList != null && !userList.isEmpty()) {
+                        appendReceivedMessage("\n--- ALL USERS (111) ---");
+                        for (String userEntry : userList) {
+                            appendReceivedMessage("- " + userEntry);
+                        }
+                        appendReceivedMessage("---------------------------\n");
+                    } else {
+                        appendReceivedMessage("\n--- No users found. ---");
+                    }
+                    break;
+                case "112": appendReceivedMessage("SERVER ERROR (112 - List All Users Failed): " + messageDetails); break;
+                case "999": appendReceivedMessage("SERVER ERROR (999 - Unknown Operation): " + messageDetails); break;
                 default: appendReceivedMessage("Unknown server response: " + opCode + " - " + messageDetails);
             }
         });
     }
 
     // --- Request Sending Methods ---
-    // (These methods remain as they are, directly within the ClientApp class)
 
     private void sendLoginRequest() {
         try {
@@ -943,6 +914,22 @@ public class ClientApp extends JFrame {
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Error sending admin delete message request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             appendReceivedMessage("Error sending admin delete message request: " + e.getMessage());
+        }
+    }
+
+    private void sendAdminListAllUsersRequest() { // New method for opcode 110
+        if (!connected.get() || currentToken == null || !currentToken.startsWith("a")) {
+            JOptionPane.showMessageDialog(this, "You must be logged in as an administrator to list all users.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        try {
+            ProtocolMessage listUsersMsg = new ProtocolMessage("110");
+            listUsersMsg.setToken(currentToken);
+            connection.sendMessage(listUsersMsg);
+            appendReceivedMessage("Sending list all users request (110).");
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Error sending list all users request: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            appendReceivedMessage("Error sending list all users request: " + e.getMessage());
         }
     }
 
