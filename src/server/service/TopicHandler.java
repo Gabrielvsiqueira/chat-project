@@ -258,24 +258,19 @@ public class TopicHandler {
         broadcastTopicMsg.setTopicSubject(topic.getSubject());
         broadcastTopicMsg.setTopicContent(topic.getContent());
 
-        // Obtém o nickname do autor do tópico.
         User authorUser = authHandler.getUserByUsername(topic.getAuthorUserId());
         broadcastTopicMsg.setTopicAuthor(authorUser != null ? authorUser.getNickname() : "Unknown");
 
         logConsumer.accept("Broadcasting new topic '" + topic.getTitle() + "' (ID: " + topic.getId() + ") to all authenticated clients.");
 
-        // Itera sobre uma cópia da lista de outputs para evitar ConcurrentModificationException
-        // IMPORTANTE: activeClientOutputs precisa ser um mapa de token -> ObjectOutputStream para broadcast
-        // e o token precisa ser atualizado no ClientHandler após o login.
         for (Map.Entry<String, ObjectOutputStream> entry : new ConcurrentHashMap<>(activeClientOutputs).entrySet()) {
             try {
                 SerializationHelper.writeMessage(broadcastTopicMsg, entry.getValue());
                 logConsumer.accept("  - Broadcasted (attempted) to client with token: " + entry.getKey());
             } catch (IOException e) {
                 logConsumer.accept("Error broadcasting to client " + entry.getKey() + ": " + e.getMessage() + ". Removing client output.");
-                // Remove o cliente da lista se o envio falhar (provavelmente desconectado)
                 activeClientOutputs.remove(entry.getKey());
-                // Você pode querer notificar o AuthHandler para desautenticar o usuário também
+
             }
         }
     }
