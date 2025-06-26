@@ -1,8 +1,6 @@
 package server;
 
 import common.ClientInfo;
-import server.model.Topic;
-import server.model.User;
 import server.repository.ReplyRepository;
 import server.repository.TopicRepository;
 import server.repository.UserRepository;
@@ -17,7 +15,7 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.io.PrintWriter; // Importa a classe correta
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -31,39 +29,45 @@ public class ServerApp extends JFrame {
     private volatile boolean running;
     private int port;
 
-    // Repositories
-    private UserRepository userRepository;
-    private TopicRepository topicRepository;
-    private ReplyRepository replyRepository;
+    // Repositórios
+    private final UserRepository userRepository;
+    private final TopicRepository topicRepository;
+    private final ReplyRepository replyRepository;
 
-    // Client Management Maps
-    private Map<String, ClientInfo> authenticatedUsers; // token -> ClientInfo
-    private List<ClientHandler> connectedClientHandlers; // All active client handlers
-    private Map<String, ObjectOutputStream> activeClientOutputs; // token -> ObjectOutputStream for broadcast
+    // Gerenciamento de Clientes
+    private final Map<String, ClientInfo> authenticatedUsers;
+    private final List<ClientHandler> connectedClientHandlers;
+    // *** CORREÇÃO APLICADA AQUI ***
+    // O mapa agora armazena PrintWriter, não ObjectOutputStream
+    private final Map<String, PrintWriter> activeClientOutputs;
 
-    // Service Handlers
-    private AuthHandler authHandler;
-    private ProfileHandler profileHandler;
-    private TopicHandler topicHandler;
-    private UserDataHandler userDataHandler;
-    private AdminHandler adminHandler;
+    // Handlers de Serviço
+    private final AuthHandler authHandler;
+    private final ProfileHandler profileHandler;
+    private final TopicHandler topicHandler;
+    private final UserDataHandler userDataHandler;
+    private final AdminHandler adminHandler;
 
+    // Componentes da GUI
     private DefaultListModel<ClientInfo> listModel;
     private JList<ClientInfo> clientList;
     private JTextArea logArea;
 
     public ServerApp() {
-        // Initialize Repositories
+        // Inicializa Repositórios
         userRepository = new UserRepository();
         topicRepository = new TopicRepository();
         replyRepository = new ReplyRepository();
 
-        // Initialize Client Management Structures
+        // Inicializa Estruturas de Gerenciamento de Clientes
         authenticatedUsers = new ConcurrentHashMap<>();
         connectedClientHandlers = new CopyOnWriteArrayList<>();
-        activeClientOutputs = new ConcurrentHashMap<>();
+        // *** CORREÇÃO APLICADA AQUI ***
+        activeClientOutputs = new ConcurrentHashMap<>(); // Inicializa o mapa com o tipo correto
 
-        // Initialize Service Handlers with their dependencies and callbacks
+        // Inicializa Handlers de Serviço com suas dependências e callbacks
+        // *** CORREÇÃO APLICADA AQUI ***
+        // Passa o mapa 'activeClientOutputs' (que agora é do tipo PrintWriter) para os handlers
         authHandler = new AuthHandler(userRepository, authenticatedUsers, this::logMessage, this::updateClientListGUI);
         topicHandler = new TopicHandler(topicRepository, replyRepository, authHandler, this::logMessage, activeClientOutputs);
         profileHandler = new ProfileHandler(userRepository, authHandler, this::logMessage, this::updateClientListGUI);
@@ -145,11 +149,13 @@ public class ServerApp extends JFrame {
         while (running) {
             try {
                 Socket clientSocket = serverSocket.accept();
+                // *** CORREÇÃO APLICADA AQUI ***
+                // O construtor do ClientHandler recebe o mapa com o tipo correto
                 ClientHandler clientHandler = new ClientHandler(
                         clientSocket,
                         this::logMessage,
-                        this::updateClientListGUI, // Callback to update GUI list
-                        this::removeClientHandler, // Callback to remove handler on disconnect
+                        this::updateClientListGUI,
+                        this::removeClientHandler,
                         authHandler,
                         profileHandler,
                         topicHandler,
@@ -164,51 +170,37 @@ public class ServerApp extends JFrame {
                     logMessage("Server socket closed unexpectedly: " + e.getMessage());
                 }
             } catch (IOException e) {
-                logMessage("Error accepting client connection: " + e.getMessage());
+                if(running) logMessage("Error accepting client connection: " + e.getMessage());
             } catch (Exception e) {
-                logMessage("Unexpected error in accept loop: " + e.getMessage());
-                e.printStackTrace();
+                if(running) {
+                    logMessage("Unexpected error in accept loop: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
         }
     }
 
-    // Callback to update the GUI client list
     private void updateClientListGUI(ClientInfo clientInfo) {
         SwingUtilities.invokeLater(() -> {
-            // Remove the client from the list if it's no longer authenticated or its token changed,
-            // then re-add or just update. This logic ensures accurate representation.
-            if (!listModel.contains(clientInfo)) {
-                // Check if an existing entry needs updating
-                boolean found = false;
-                for (int i = 0; i < listModel.getSize(); i++) {
-                    if (listModel.getElementAt(i).equals(clientInfo)) { // Compares by IP:Port
-                        listModel.setElementAt(clientInfo, i); // Update existing element
-                        found = true;
-                        break;
-                    }
+            boolean found = false;
+            for (int i = 0; i < listModel.getSize(); i++) {
+                if (listModel.getElementAt(i).equals(clientInfo)) {
+                    listModel.setElementAt(clientInfo, i);
+                    found = true;
+                    break;
                 }
-                if (!found) { // Add if not found
-                    listModel.addElement(clientInfo);
-                }
-            } else { // If already in list, just repaint to ensure name changes are reflected
-                clientList.repaint();
             }
-
-            // Also, remove guests from list if they become authenticated and are no longer listed as guest by IP:Port
-            // This is handled by the ClientHandler's key management in activeClientOutputs.
-            // The `clientInfo.setUserId(null); clientInfo.setToken(null);` on logout/delete will make equals/hashCode
-            // effectively remove the old entry if it's not authenticated anymore by ID, but `equals` is still by IP/Port.
-            // A more robust solution might involve specific removal and re-addition if the "identity" changes,
-            // or clearing and repopulating the list based on `authenticatedUsers` map.
-            // For now, `repaint()` and `removeElement` in `removeClientHandler` help.
+            if (!found && clientInfo.getUserId() != null) {
+                listModel.addElement(clientInfo);
+            }
+            clientList.repaint();
         });
     }
 
-    // Callback to remove a ClientHandler from the list when it disconnects
     private void removeClientHandler(ClientHandler handler) {
         connectedClientHandlers.remove(handler);
         SwingUtilities.invokeLater(() -> {
-            listModel.removeElement(handler.getClientInfo()); // Remove the client from GUI list
+            listModel.removeElement(handler.getClientInfo());
             clientList.repaint();
         });
     }
@@ -242,6 +234,6 @@ public class ServerApp extends JFrame {
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new ServerApp());
+        SwingUtilities.invokeLater(ServerApp::new);
     }
 }

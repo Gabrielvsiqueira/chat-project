@@ -3,9 +3,10 @@ package client;
 import common.ProtocolMessage;
 import common.SerializationHelper;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.concurrent.BlockingQueue;
@@ -16,16 +17,18 @@ import java.util.function.Consumer;
  * Gerencia a conexão TCP do cliente com o servidor, incluindo envio e recebimento de mensagens.
  */
 public class ClientConnection {
+    // --- CAMPOS DA CLASSE (VARIÁVEIS DE INSTÂNCIA) ---
     private Socket socket;
-    private ObjectOutputStream out;
-    private ObjectInputStream in;
+    private PrintWriter out;
+    private BufferedReader in;
     private Thread listenerThread;
-    private Consumer<ProtocolMessage> messageHandler; // Callback para a GUI principal
-    private Consumer<String> logConsumer; // Callback para o log da GUI
-    private BlockingQueue<ProtocolMessage> outgoingQueue; // Fila para mensagens de saída
+    private final Consumer<ProtocolMessage> messageHandler;
+    private final Consumer<String> logConsumer;
+    private final BlockingQueue<ProtocolMessage> outgoingQueue;
 
     private volatile boolean connected = false;
 
+    // --- CONSTRUTOR ---
     public ClientConnection(Consumer<ProtocolMessage> messageHandler, Consumer<String> logConsumer) {
         this.messageHandler = messageHandler;
         this.logConsumer = logConsumer;
@@ -33,40 +36,34 @@ public class ClientConnection {
     }
 
     public boolean isConnected() {
-        return connected && socket != null && !socket.isClosed();
+        return this.connected && this.socket != null && !this.socket.isClosed();
     }
 
     /**
      * Tenta conectar ao servidor TCP.
-     * @param host Endereço do servidor.
-     * @param port Porta do servidor.
-     * @throws IOException Se a conexão falhar.
-     * @throws UnknownHostException Se o host não for encontrado.
      */
     public void connect(String host, int port) throws IOException, UnknownHostException {
-        if (connected) {
-            logConsumer.accept("Already connected. Disconnecting first.");
-            disconnect();
+        if (this.connected) {
+            this.logConsumer.accept("Already connected. Disconnecting first.");
+            this.disconnect();
         }
         try {
-            socket = new Socket(host, port);
-            out = new ObjectOutputStream(socket.getOutputStream());
-            in = new ObjectInputStream(socket.getInputStream());
-            connected = true;
-            logConsumer.accept("Connected to server: " + host + ":" + port);
+            this.socket = new Socket(host, port);
+            this.out = new PrintWriter(this.socket.getOutputStream(), true);
+            this.in = new BufferedReader(new InputStreamReader(this.socket.getInputStream()));
+            this.connected = true;
+            this.logConsumer.accept("Connected to server: " + host + ":" + port);
 
-            // Inicia o thread de escuta
-            listenerThread = new Thread(this::listenForMessages);
-            listenerThread.setDaemon(true); // Thread encerra com a aplicação principal
-            listenerThread.start();
+            this.listenerThread = new Thread(this::listenForMessages);
+            this.listenerThread.setDaemon(true);
+            this.listenerThread.start();
 
-            // Inicia o thread de envio
             Thread senderThread = new Thread(this::sendMessages);
             senderThread.setDaemon(true);
             senderThread.start();
 
         } catch (IOException e) {
-            logConsumer.accept("Failed to connect: " + e.getMessage());
+            this.logConsumer.accept("Failed to connect: " + e.getMessage());
             throw e;
         }
     }
@@ -75,41 +72,40 @@ public class ClientConnection {
      * Desconecta do servidor.
      */
     public void disconnect() {
-        if (!connected) {
-            logConsumer.accept("Not connected.");
+        if (!this.connected) {
+            this.logConsumer.accept("Not connected.");
             return;
         }
-        connected = false;
+        this.connected = false;
         try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close(); // Isso deve interromper as operações de I/O nos threads
+            if (this.socket != null && !this.socket.isClosed()) {
+                this.socket.close();
             }
-            if (out != null) out.close();
-            if (in != null) in.close();
-            logConsumer.accept("Disconnected from server.");
+            if (this.out != null) this.out.close();
+            if (this.in != null) this.in.close();
+            this.logConsumer.accept("Disconnected from server.");
         } catch (IOException e) {
-            logConsumer.accept("Error during disconnection: " + e.getMessage());
+            this.logConsumer.accept("Error during disconnection: " + e.getMessage());
         } finally {
-            socket = null;
-            out = null;
-            in = null;
+            this.socket = null;
+            this.out = null;
+            this.in = null;
         }
     }
 
     /**
      * Adiciona uma mensagem à fila de envio.
-     * @param message A ProtocolMessage a ser enviada.
      */
     public void sendMessage(ProtocolMessage message) {
-        if (!connected) {
-            logConsumer.accept("Cannot send message: not connected to server.");
+        if (!this.connected) {
+            this.logConsumer.accept("Cannot send message: not connected to server.");
             return;
         }
         try {
-            outgoingQueue.put(message); // Adiciona a mensagem à fila de saída
+            this.outgoingQueue.put(message);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logConsumer.accept("Failed to queue message for sending: " + e.getMessage());
+            this.logConsumer.accept("Failed to queue message for sending: " + e.getMessage());
         }
     }
 
@@ -117,43 +113,52 @@ public class ClientConnection {
      * Thread para escutar mensagens recebidas do servidor.
      */
     private void listenForMessages() {
-        while (connected) {
+        while (this.connected) {
             try {
-                ProtocolMessage message = SerializationHelper.readMessage(in);
-                messageHandler.accept(message); // Envia a mensagem para o manipulador da GUI
-            } catch (ClassNotFoundException e) {
-                logConsumer.accept("Error: Class not found during deserialization: " + e.getMessage());
+                ProtocolMessage message = SerializationHelper.readMessage(this.in);
+                if (message == null) {
+                    if (this.connected) {
+                        this.logConsumer.accept("Server closed the connection.");
+                        this.disconnect();
+                    }
+                    break;
+                }
+                this.messageHandler.accept(message);
             } catch (IOException e) {
-                if (connected) { // Se a desconexão não foi intencional
-                    logConsumer.accept("Server disconnected or IO error: " + e.getMessage());
-                    disconnect(); // Força a desconexão do cliente
+                if (this.connected) {
+                    this.logConsumer.accept("Server disconnected or IO error: " + e.getMessage());
+                    this.disconnect();
                 }
             } catch (Exception e) {
-                logConsumer.accept("Unexpected error while listening: " + e.getMessage());
+                if (this.connected) {
+                    this.logConsumer.accept("Unexpected error while listening: " + e.getMessage());
+                }
             }
         }
-        logConsumer.accept("Listener thread stopped.");
+        this.logConsumer.accept("Listener thread stopped.");
     }
 
     /**
      * Thread para enviar mensagens da fila de saída para o servidor.
      */
     private void sendMessages() {
-        while (connected) {
+        while (this.connected) {
             try {
-                ProtocolMessage message = outgoingQueue.take(); // Pega a próxima mensagem da fila (bloqueia se estiver vazia)
-                SerializationHelper.writeMessage(message, out);
-                logConsumer.accept("Sent " + message.getOperationCode() + " request.");
+                ProtocolMessage message = this.outgoingQueue.take();
+                SerializationHelper.writeMessage(message, this.out);
+                this.logConsumer.accept("Sent " + message.getOperationCode() + " request.");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                logConsumer.accept("Sender thread interrupted.");
+                this.logConsumer.accept("Sender thread interrupted.");
                 break;
             } catch (IOException e) {
-                logConsumer.accept("Error sending message: " + e.getMessage());
-                disconnect(); // Se houver erro de envio, desconecta
+                if(this.connected) {
+                    this.logConsumer.accept("Error sending message: " + e.getMessage());
+                    this.disconnect();
+                }
                 break;
             }
         }
-        logConsumer.accept("Sender thread stopped.");
+        this.logConsumer.accept("Sender thread stopped.");
     }
 }
