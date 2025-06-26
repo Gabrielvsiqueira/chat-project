@@ -1,40 +1,60 @@
 package server.repository;
 
 import server.model.User;
-
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.ArrayList; // For listAllUsernames
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class UserRepository {
-    private final Map<String, User> userDatabase; // username -> User object
+
+    private final Map<String, User> usersByUsername = new ConcurrentHashMap<>();
+    private final Map<Integer, User> usersById = new ConcurrentHashMap<>();
+    private final AtomicInteger idCounter = new AtomicInteger(0);
 
     public UserRepository() {
-        userDatabase = new ConcurrentHashMap<>();
-        // Add test users as specified in the protocol
-        userDatabase.put("admin123", new User("admin123", "admin123", "admin123", "admin")); // Specified admin user
-        userDatabase.put("user1", new User("user1", "user1pass", "User One", "common"));
-        userDatabase.put("user2", new User("user2", "user2pass", "User Two", "common"));
-    }
-
-    public User findByUsername(String username) {
-        return userDatabase.get(username);
-    }
-
-    public boolean existsByUsername(String username) {
-        return userDatabase.containsKey(username);
+        User adminUser = new User("admin123", "admin123", "admin123", "admin");
+        save(adminUser);
     }
 
     public void save(User user) {
-        userDatabase.put(user.getUsername(), user);
+        if (user.getId() == 0) {
+            int newId = idCounter.incrementAndGet();
+            user.setId(newId);
+        }
+        usersByUsername.put(user.getUsername(), user);
+        usersById.put(user.getId(), user);
+    }
+
+    public User findByUsername(String username) {
+        return usersByUsername.get(username);
+    }
+
+    public User findById(int id) {
+        return usersById.get(id);
+    }
+
+    public boolean existsByUsername(String username) {
+        return usersByUsername.containsKey(username);
     }
 
     public void deleteByUsername(String username) {
-        userDatabase.remove(username);
+        User user = usersByUsername.remove(username);
+        if (user != null) {
+            usersById.remove(user.getId());
+        }
     }
 
-    public List<String> listAllUsernames() { // New method for opcode 110
-        return new ArrayList<>(userDatabase.keySet());
+    /**
+     * Lista os NOMES de todos os usuários.
+     * @return Uma lista de strings com os nomes de usuário.
+     */
+    public List<String> listAllUsernames() {
+        // --- CORREÇÃO (Protocolo 111) ---
+        // Retorna apenas a lista de usernames, não a string formatada.
+        return usersByUsername.values().stream()
+                .map(User::getUsername)
+                .collect(Collectors.toList());
     }
 }

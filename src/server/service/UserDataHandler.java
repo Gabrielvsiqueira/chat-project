@@ -7,12 +7,9 @@ import server.repository.UserRepository;
 
 import java.util.function.Consumer;
 
-/**
- * Lida com as operações de recuperação de dados de usuário (005).
- */
 public class UserDataHandler {
     private final UserRepository userRepository;
-    private final AuthHandler authHandler; // Para validar tokens
+    private final AuthHandler authHandler;
     private final Consumer<String> logConsumer;
 
     public UserDataHandler(UserRepository userRepository, AuthHandler authHandler, Consumer<String> logConsumer) {
@@ -22,32 +19,40 @@ public class UserDataHandler {
     }
 
     public ProtocolMessage handleRetrieveUserData(ProtocolMessage request, ClientInfo clientInfo) {
-        String requestedUser = request.getUser();
+        // --- CORREÇÃO (Protocolo 005) ---
+        // O campo 'user' agora é tratado como o NOME DE USUÁRIO do alvo da busca.
+        String targetUsername = request.getUser();
         String token = request.getToken();
 
-        logConsumer.accept("Attempting to retrieve data for user: '" + requestedUser + "' by client token '" + token + "' from " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
+        logConsumer.accept("Attempting to retrieve data for user: '" + targetUsername + "' by token '" + token + "'");
 
-        if (token == null || token.isEmpty() || requestedUser == null || requestedUser.isEmpty()) {
-            logConsumer.accept("User data retrieval failed: User or token cannot be null/empty.");
-            return ProtocolMessage.createErrorMessage("007", "User or token cannot be null/empty for data retrieval.");
+        if (token == null || token.isEmpty() || targetUsername == null || targetUsername.isEmpty()) {
+            return ProtocolMessage.createErrorMessage("007", "Usuario ou token nulos.");
         }
 
         ClientInfo authenticatingClient = authHandler.getAuthenticatedClientInfo(token);
-        if (authenticatingClient == null || !authenticatingClient.getUserId().equals(clientInfo.getUserId())) {
-            logConsumer.accept("User data retrieval failed: Invalid token or token does not match requesting client.");
-            return ProtocolMessage.createErrorMessage("007", "Invalid token or token does not match requesting client for data retrieval.");
+        if (authenticatingClient == null) {
+            return ProtocolMessage.createErrorMessage("007", "Token invalido.");
         }
 
-        User storedUser = userRepository.findByUsername(requestedUser);
+        // --- CORREÇÃO (Protocolo 005) ---
+        // Impõe a regra: o usuário só pode consultar seus próprios dados.
+        // O 'targetUsername' deve ser o mesmo usuário do 'authenticatingClient'.
+        if (!authenticatingClient.getUserId().equals(targetUsername)) {
+            logConsumer.accept("Data retrieval failed: User '" + authenticatingClient.getUserId() + "' cannot retrieve data for another user '" + targetUsername + "'.");
+            return ProtocolMessage.createErrorMessage("007", "Nao e possivel retornar dados de outros usuarios.");
+        }
+
+        User storedUser = userRepository.findByUsername(targetUsername);
         if (storedUser == null) {
-            logConsumer.accept("User data retrieval failed: User '" + requestedUser + "' not found.");
-            return ProtocolMessage.createErrorMessage("007", "User '" + requestedUser + "' not found.");
+            logConsumer.accept("Data retrieval failed: User '" + targetUsername + "' not found.");
+            return ProtocolMessage.createErrorMessage("007", "Usuario nao existe.");
         }
 
         ProtocolMessage response = new ProtocolMessage("006");
         response.setUser(storedUser.getUsername());
         response.setNickname(storedUser.getNickname());
-        logConsumer.accept("Sent 006 response with data for user '" + requestedUser + "' (Nickname: " + storedUser.getNickname() + ") to " + clientInfo.getAddress().getHostAddress() + ":" + clientInfo.getPort());
+        logConsumer.accept("Sent 006 response with data for user '" + storedUser.getUsername() + "'");
         return response;
     }
 }
