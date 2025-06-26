@@ -2,7 +2,6 @@ package client;
 
 import common.ProtocolMessage;
 import common.SerializationHelper;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -13,11 +12,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
-/**
- * Gerencia a conexão TCP do cliente com o servidor, incluindo envio e recebimento de mensagens.
- */
 public class ClientConnection {
-    // --- CAMPOS DA CLASSE (VARIÁVEIS DE INSTÂNCIA) ---
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
@@ -28,7 +23,6 @@ public class ClientConnection {
 
     private volatile boolean connected = false;
 
-    // --- CONSTRUTOR ---
     public ClientConnection(Consumer<ProtocolMessage> messageHandler, Consumer<String> logConsumer) {
         this.messageHandler = messageHandler;
         this.logConsumer = logConsumer;
@@ -39,9 +33,6 @@ public class ClientConnection {
         return this.connected && this.socket != null && !this.socket.isClosed();
     }
 
-    /**
-     * Tenta conectar ao servidor TCP.
-     */
     public void connect(String host, int port) throws IOException, UnknownHostException {
         if (this.connected) {
             this.logConsumer.accept("Already connected. Disconnecting first.");
@@ -68,9 +59,6 @@ public class ClientConnection {
         }
     }
 
-    /**
-     * Desconecta do servidor.
-     */
     public void disconnect() {
         if (!this.connected) {
             this.logConsumer.accept("Not connected.");
@@ -93,9 +81,6 @@ public class ClientConnection {
         }
     }
 
-    /**
-     * Adiciona uma mensagem à fila de envio.
-     */
     public void sendMessage(ProtocolMessage message) {
         if (!this.connected) {
             this.logConsumer.accept("Cannot send message: not connected to server.");
@@ -109,9 +94,6 @@ public class ClientConnection {
         }
     }
 
-    /**
-     * Thread para escutar mensagens recebidas do servidor.
-     */
     private void listenForMessages() {
         while (this.connected) {
             try {
@@ -138,9 +120,6 @@ public class ClientConnection {
         this.logConsumer.accept("Listener thread stopped.");
     }
 
-    /**
-     * Thread para enviar mensagens da fila de saída para o servidor.
-     */
     private void sendMessages() {
         while (this.connected) {
             try {

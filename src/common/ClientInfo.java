@@ -4,25 +4,14 @@ import java.io.Serializable;
 import java.net.InetAddress;
 import java.util.Objects;
 
-/**
- * Representa as informações de um cliente conectado ao servidor.
- * Inclui o nome de exibição, ID de usuário (após login), token de autenticação,
- * endereço IP e porta.
- * A implementação de equals e hashCode é crucial para identificar clientes
- * de forma única pelo seu endpoint de rede (endereço IP e porta).
- *
- * Implementa Serializable para permitir a passagem através de ObjectOutputStream/InputStream.
- */
 public class ClientInfo implements Serializable {
-    private static final long serialVersionUID = 1L; // Adicionar serialVersionUID
+    private static final long serialVersionUID = 1L;
 
     private String name;
     private String userId;
     private String token;
     private InetAddress address;
     private int port;
-
-    // ... (restante dos construtores e getters/setters permanecem os mesmos)
 
     public ClientInfo(String name, InetAddress address, int port) {
         this.name = name;

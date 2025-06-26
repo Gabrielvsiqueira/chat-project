@@ -19,8 +19,6 @@ public class UserDataHandler {
     }
 
     public ProtocolMessage handleRetrieveUserData(ProtocolMessage request, ClientInfo clientInfo) {
-        // --- CORREÇÃO (Protocolo 005) ---
-        // O campo 'user' agora é tratado como o NOME DE USUÁRIO do alvo da busca.
         String targetUsername = request.getUser();
         String token = request.getToken();
 
@@ -35,9 +33,6 @@ public class UserDataHandler {
             return ProtocolMessage.createErrorMessage("007", "Token invalido.");
         }
 
-        // --- CORREÇÃO (Protocolo 005) ---
-        // Impõe a regra: o usuário só pode consultar seus próprios dados.
-        // O 'targetUsername' deve ser o mesmo usuário do 'authenticatingClient'.
         if (!authenticatingClient.getUserId().equals(targetUsername)) {
             logConsumer.accept("Data retrieval failed: User '" + authenticatingClient.getUserId() + "' cannot retrieve data for another user '" + targetUsername + "'.");
             return ProtocolMessage.createErrorMessage("007", "Nao e possivel retornar dados de outros usuarios.");

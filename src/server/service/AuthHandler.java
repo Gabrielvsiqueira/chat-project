@@ -47,7 +47,6 @@ public class AuthHandler {
             return ProtocolMessage.createErrorMessage("002", "Senha errada.");
         }
 
-        // CORREÇÃO: A geração do token já estava correta.
         String rolePrefix = "common".equals(storedUser.getRole()) ? "c" : "a";
         String token = rolePrefix + String.format("%05d", nextTokenId.getAndIncrement());
 
@@ -59,8 +58,6 @@ public class AuthHandler {
         clientListUpdater.accept(clientInfo);
         logConsumer.accept("Client '" + user + "' (ID: " + storedUser.getId() + ") logged in with token: " + token);
 
-        // --- CORREÇÃO (Protocolo 001) ---
-        // A resposta de login envia APENAS o token, conforme o protocolo.
         ProtocolMessage response = new ProtocolMessage("001");
         response.setToken(token);
         return response;
@@ -88,8 +85,6 @@ public class AuthHandler {
 
         logConsumer.accept("New user registered: '" + user + "' (ID: " + newUser.getId() + ")");
 
-        // --- CORREÇÃO (Protocolo 011) ---
-        // A resposta de cadastro envia uma mensagem de sucesso genérica.
         return new ProtocolMessage("011", "Cadastro realizado com sucesso.");
     }
 

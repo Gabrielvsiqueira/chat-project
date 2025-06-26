@@ -56,13 +56,10 @@ public class ProtocolMessage implements Serializable {
         this.operationCode = operationCode;
     }
 
-    // --- NOVO CONSTRUTOR: Para mensagens com código de operação e conteúdo ---
     public ProtocolMessage(String operationCode, String messageContent) {
         this.operationCode = operationCode;
         this.messageContent = messageContent;
     }
-    // --- FIM DO NOVO CONSTRUTOR ---
-
 
     public String getOperationCode() { return operationCode; }
     public void setOperationCode(String operationCode) { this.operationCode = operationCode; }

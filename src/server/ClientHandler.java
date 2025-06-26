@@ -8,7 +8,6 @@ import server.service.AuthHandler;
 import server.service.ProfileHandler;
 import server.service.TopicHandler;
 import server.service.UserDataHandler;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -21,7 +20,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 public class ClientHandler implements Runnable {
-    // --- CAMPOS DA CLASSE (VARIÁVEIS DE INSTÂNCIA) ---
     private final Socket clientSocket;
     private ClientInfo clientInfo;
     private final BufferedReader in;
@@ -29,17 +27,15 @@ public class ClientHandler implements Runnable {
     private final Consumer<String> logConsumer;
     private final Consumer<ClientInfo> clientListUpdater;
     private final Consumer<ClientHandler> clientDisconnectedCallback;
-
     private final AuthHandler authHandler;
     private final ProfileHandler profileHandler;
     private final TopicHandler topicHandler;
     private final UserDataHandler userDataHandler;
     private final AdminHandler adminHandler;
-    private final Map<String, PrintWriter> activeClientOutputs; // Corrigido para PrintWriter
+    private final Map<String, PrintWriter> activeClientOutputs;
 
     private volatile boolean running = true;
 
-    // --- CONSTRUTOR ---
     public ClientHandler(Socket clientSocket,
                          Consumer<String> logConsumer,
                          Consumer<ClientInfo> clientListUpdater,
@@ -51,7 +47,6 @@ public class ClientHandler implements Runnable {
                          AdminHandler adminHandler,
                          Map<String, PrintWriter> activeClientOutputs) throws IOException {
 
-        // Atribui todos os parâmetros recebidos para os campos da classe
         this.clientSocket = clientSocket;
         this.logConsumer = logConsumer;
         this.clientListUpdater = clientListUpdater;
@@ -63,15 +58,12 @@ public class ClientHandler implements Runnable {
         this.adminHandler = adminHandler;
         this.activeClientOutputs = activeClientOutputs;
 
-        // Inicializa os fluxos de I/O baseados em texto
         this.out = new PrintWriter(this.clientSocket.getOutputStream(), true); // 'true' para auto-flush
         this.in = new BufferedReader(new InputStreamReader(this.clientSocket.getInputStream()));
 
-        // Cria a informação inicial do cliente como "Convidado"
         this.clientInfo = new ClientInfo("Guest", this.clientSocket.getInetAddress(), this.clientSocket.getPort());
         logMessageWithClientContext("New client connected: " + this.clientInfo.getAddress().getHostAddress() + ":" + this.clientInfo.getPort());
 
-        // Atualiza a GUI do servidor com o novo cliente
         this.clientListUpdater.accept(this.clientInfo);
     }
 
@@ -93,7 +85,7 @@ public class ClientHandler implements Runnable {
                 ProtocolMessage request = SerializationHelper.readMessage(this.in);
                 if (request == null) {
                     logMessageWithClientContext("Client disconnected gracefully (stream closed).");
-                    break; // Sai do loop para fechar a conexão
+                    break;
                 }
 
                 logMessageWithClientContext("Received op: " + request.getOperationCode() + " -> " + request.toString());

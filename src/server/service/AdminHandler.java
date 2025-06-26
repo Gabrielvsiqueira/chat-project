@@ -8,13 +8,9 @@ import server.model.User;
 import server.repository.ReplyRepository;
 import server.repository.TopicRepository;
 import server.repository.UserRepository;
-
-import java.util.List; // Import for List
+import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Handles administration operations (Change Other User's Profile, Delete Other User's Account, Delete Message).
- */
 public class AdminHandler {
     private final UserRepository userRepository;
     private final TopicRepository topicRepository;
@@ -32,7 +28,6 @@ public class AdminHandler {
         this.clientListUpdater = clientListUpdater;
     }
 
-    // Helper to check if the token belongs to an administrator
     private boolean isAdminToken(String token) {
         ClientInfo client = authHandler.getAuthenticatedClientInfo(token);
         if (client == null) {
@@ -42,7 +37,6 @@ public class AdminHandler {
         return user != null && "admin".equals(user.getRole());
     }
 
-    // --- Operation 080: Alterar Cadastro (admin) ---
     public ProtocolMessage handleChangeUserByAdmin(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String targetUser = request.getUser();
@@ -60,12 +54,10 @@ public class AdminHandler {
             return ProtocolMessage.createErrorMessage("082", "Target user cannot be null/empty.");
         }
 
-        // Restriction: Admin user cannot alter their own profile via 080
         if (targetUser.equals(clientInfo.getUserId()) && "admin".equals(userRepository.findByUsername(clientInfo.getUserId()).getRole())) {
             logConsumer.accept("Admin change profile failed: Admin cannot alter their own account via this operation (080).");
             return ProtocolMessage.createErrorMessage("082", "Admin cannot alter their own account via this operation.");
         }
-        // Restriction: Admin user cannot be altered by another admin via 080
         if ("admin".equals(userRepository.findByUsername(targetUser).getRole())) {
             logConsumer.accept("Admin change profile failed: Cannot alter another admin account.");
             return ProtocolMessage.createErrorMessage("082", "Cannot alter another admin account.");
@@ -113,7 +105,6 @@ public class AdminHandler {
         }
     }
 
-    // --- Operation 090: Apagar Cadastro (admin) ---
     public ProtocolMessage handleDeleteUserByAdmin(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String targetUser = request.getUser();
@@ -129,12 +120,11 @@ public class AdminHandler {
             return ProtocolMessage.createErrorMessage("092", "Target user cannot be null/empty.");
         }
 
-        // Restriction: Admin user cannot delete their own account via 090
         if (targetUser.equals(clientInfo.getUserId()) && "admin".equals(userRepository.findByUsername(clientInfo.getUserId()).getRole())) {
             logConsumer.accept("Admin delete user failed: Admin cannot delete their own account via this operation (090).");
             return ProtocolMessage.createErrorMessage("092", "Admin cannot delete their own account via this operation.");
         }
-        // Restriction: Cannot delete another admin account
+
         if ("admin".equals(userRepository.findByUsername(targetUser).getRole())) {
             logConsumer.accept("Admin delete user failed: Cannot delete another admin account.");
             return ProtocolMessage.createErrorMessage("092", "Cannot delete another admin account.");
@@ -149,13 +139,9 @@ public class AdminHandler {
         userRepository.deleteByUsername(targetUser);
         logConsumer.accept("User account '" + targetUser + "' deleted by admin '" + clientInfo.getUserId() + "'.");
 
-        // Note: Forcing logout of the deleted user is a separate concern, might need explicit call to AuthHandler
-        // if user is currently logged in.
-
         return new ProtocolMessage("091", "User account deleted successfully.");
     }
 
-    // --- Operation 100: Apagar Mensagem (admin) ---
     public ProtocolMessage handleDeleteMessage(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String messageId = request.getId();
@@ -171,18 +157,14 @@ public class AdminHandler {
             return ProtocolMessage.createErrorMessage("102", "Message ID cannot be null/empty.");
         }
 
-        // Try to find as a topic
         Topic topicToDelete = topicRepository.findById(messageId);
         if (topicToDelete != null) {
             topicToDelete.markAsDeleted();
             logConsumer.accept("Topic '" + messageId + "' marked as deleted by admin '" + clientInfo.getUserId() + "'.");
             return new ProtocolMessage("101", "Topic deleted successfully.");
         }
-
-        // If not a topic, try to find as a reply
         MessageReply replyToDelete = null;
         String parentTopicId = null;
-        // Iterate through all topics to find the nested reply (less efficient but functional for in-memory DB)
         for (Topic t : topicRepository.findAll()) {
             MessageReply foundReply = replyRepository.findReplyByIdInTopic(t.getId(), messageId);
             if (foundReply != null) {

@@ -1,23 +1,19 @@
 package server.model;
 
 public class User {
-    // --- CAMPO ADICIONADO ---
-    private int id; // Campo para armazenar o ID único do usuário
+    private int id;
 
     private String username;
     private String password;
     private String nickname;
     private String role;
 
-    // Seus construtores existentes (não precisam ser alterados)
     public User(String username, String password, String nickname, String role) {
         this.username = username;
         this.password = password;
         this.nickname = nickname;
         this.role = role;
     }
-
-    // --- MÉTODOS GETTER E SETTER ADICIONADOS ---
 
     public int getId() {
         return id;
@@ -27,10 +23,6 @@ public class User {
         this.id = id;
     }
 
-    // --- Fim dos métodos adicionados ---
-
-
-    // Getters e Setters existentes (não precisam ser alterados)
     public String getUsername() {
         return username;
     }

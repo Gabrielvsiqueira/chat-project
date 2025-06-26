@@ -46,13 +46,7 @@ public class UserRepository {
         }
     }
 
-    /**
-     * Lista os NOMES de todos os usuários.
-     * @return Uma lista de strings com os nomes de usuário.
-     */
     public List<String> listAllUsernames() {
-        // --- CORREÇÃO (Protocolo 111) ---
-        // Retorna apenas a lista de usernames, não a string formatada.
         return usersByUsername.values().stream()
                 .map(User::getUsername)
                 .collect(Collectors.toList());

@@ -8,9 +8,8 @@ import server.model.Topic;
 import server.model.User;
 import server.repository.ReplyRepository;
 import server.repository.TopicRepository;
-
 import java.io.IOException;
-import java.io.PrintWriter; // Corrigido: Importa PrintWriter
+import java.io.PrintWriter; //
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -18,15 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-/**
- * Handles forum topics (create, list, broadcast) and replies to topics.
- */
 public class TopicHandler {
     private final TopicRepository topicRepository;
     private final ReplyRepository replyRepository;
     private final AuthHandler authHandler;
     private final Consumer<String> logConsumer;
-    private final Map<String, PrintWriter> activeClientOutputs; // Corrigido: O tipo do mapa é PrintWriter
+    private final Map<String, PrintWriter> activeClientOutputs;
 
     public TopicHandler(TopicRepository topicRepository, ReplyRepository replyRepository, AuthHandler authHandler, Consumer<String> logConsumer, Map<String, PrintWriter> activeClientOutputs) {
         this.topicRepository = topicRepository;
@@ -36,9 +32,6 @@ public class TopicHandler {
         this.activeClientOutputs = activeClientOutputs;
     }
 
-    /**
-     * Handles operation 050 (Create Topic).
-     */
     public ProtocolMessage handleCreateTopic(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String title = request.getTitle();
@@ -63,14 +56,9 @@ public class TopicHandler {
 
         logConsumer.accept("New topic created by " + authClient.getUserId() + ": '" + title + "' (ID: " + topicId + ")");
 
-        // Não há necessidade de broadcast aqui, a menos que o protocolo exija
-
         return new ProtocolMessage("051", "Topic created successfully!");
     }
 
-    /**
-     * Handles operation 060 (Send Reply).
-     */
     public ProtocolMessage handleReplyMessage(ProtocolMessage request, ClientInfo clientInfo) {
         String token = request.getToken();
         String topicId = request.getId();
@@ -98,9 +86,6 @@ public class TopicHandler {
         return new ProtocolMessage("061", "Reply sent successfully!");
     }
 
-    /**
-     * Handles operation 070 (Get Replies).
-     */
     public ProtocolMessage handleGetReplies(ProtocolMessage request, ClientInfo clientInfo) {
         String topicId = request.getId();
 
@@ -131,9 +116,6 @@ public class TopicHandler {
         return response;
     }
 
-    /**
-     * Handles operation 075 (Get Topics).
-     */
     public ProtocolMessage handleGetTopics(ProtocolMessage request, ClientInfo clientInfo) {
         List<Map<String, String>> topicsData = topicRepository.findAll().stream()
                 .map(topic -> {
@@ -154,17 +136,11 @@ public class TopicHandler {
         return response;
     }
 
-    /**
-     * Broadcasts a message to all or specific clients.
-     * This is a generic broadcast method now.
-     */
     private void broadcastMessage(ProtocolMessage message) {
         logConsumer.accept("Broadcasting message op: " + message.getOperationCode() + " to all authenticated clients.");
 
         for (Map.Entry<String, PrintWriter> entry : new ConcurrentHashMap<>(activeClientOutputs).entrySet()) {
             try {
-                // *** CORREÇÃO APLICADA AQUI ***
-                // O método agora usa o PrintWriter do mapa, que é o tipo correto.
                 SerializationHelper.writeMessage(message, entry.getValue());
             } catch (IOException e) {
                 logConsumer.accept("Error broadcasting to client " + entry.getKey() + ": " + e.getMessage() + ". Removing client output.");
